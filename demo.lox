@@ -1,0 +1,6 @@
+var bool = (122.0 + 2) != 2.789 // comment
+
+if (bool) {
+  print "BigBrother"
+}
+

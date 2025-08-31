@@ -1,0 +1,12 @@
+lib: [
+  "_build/install/default/lib/olox/META"
+  "_build/install/default/lib/olox/dune-package"
+  "_build/install/default/lib/olox/opam"
+]
+bin: [
+  "_build/install/default/bin/olox"
+]
+doc: [
+  "_build/install/default/doc/olox/LICENSE"
+  "_build/install/default/doc/olox/README.md"
+]

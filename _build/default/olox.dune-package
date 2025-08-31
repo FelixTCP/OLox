@@ -1,0 +1,4 @@
+(lang dune 3.20)
+(name olox)
+(sections (lib .) (bin ../../bin) (doc ../../doc/olox))
+(files (lib (META dune-package opam)) (bin (olox)) (doc (LICENSE README.md)))
