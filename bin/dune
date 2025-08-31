@@ -1,4 +1,5 @@
 (executable
  (public_name olox)
  (name main)
+ (modules main error lexer parser)
  (libraries olox))

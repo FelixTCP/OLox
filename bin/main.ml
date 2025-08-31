@@ -32,7 +32,14 @@ let rec run_prompt () =
         run_prompt ()
   with End_of_file -> exit_prompt ()
 
+let print_ast () =
+  let ast = Parser.AST.get_demo () in
+  Parser.AST.print ast ;
+  print_endline ""
+
 let main () =
+  let () = print_ast () in
+
   let amt = Array.length Sys.argv in
   if amt > 2 then
     print_endline "Usage: olox [filename]"
