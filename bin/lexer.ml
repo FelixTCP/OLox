@@ -14,8 +14,8 @@ module Token = struct
     | CLASS | FUN | VAR | RETURN | SUPER | THIS  
     | AND | OR 
     | PRINT
-    (* UTIL *)
-    | SKIP | EOF
+    (* EOF *)
+    | EOF
 
   type literal_type =
     | L_STRING of string
@@ -70,7 +70,6 @@ module Token = struct
     | OR -> "OR"
     | PRINT-> "PRINT"
     | EOF -> "EOF"
-    | SKIP -> "SKIP" 
 
   let literal_to_string = function 
     | L_BOOL b -> string_of_bool b
@@ -89,65 +88,73 @@ module Lexer = struct
   open Token
   open Error
 
-  (* Helper to create a token *)
-  let add_token t lexeme line idx : token * int * int =
-    ({ ttype = t; lexeme; literal = L_NIL; line }, line, idx)
+  let make_token ttype lexeme ?(literal=L_NIL) line = 
+    { ttype; lexeme; literal; line }
 
   let next_char_is source idx expected =
     let idx' = idx + 1 in
     idx' < String.length source && source.[idx'] = expected
 
-
   let read_until source idx pred =
     let rec aux i =
-      if i >= String.length source then
-        i
-      else if pred source.[i] then
-        i
-      else
-        aux (i + 1)
-    in
-    aux (idx + 1) 
+      if i >= String.length source then i
+      else if pred source.[i] then i
+      else aux (i + 1)
+    in aux (idx + 1) 
 
   let comment_end_pos source idx = 
     read_until source idx (fun c -> c = '\n')
 
-  let read_string source line idx: (string * int * int, Error.t) result =
-    let end_pos = read_until source idx (fun c -> c = '"') in
-    if end_pos >= String.length source then
-      Error (ScanError(line, "Unterminated string"))
-    else
-      let lexeme = String.sub source (idx + 1) (end_pos - idx - 1) in 
-      let line' = if (String.contains lexeme '\n') then line + 1 else line in
-      Ok (lexeme, line', (end_pos + 1))
+  let scan_string source line idx: (token * int * int, Error.t) result =
+    let rec find_end current_idx current_line =
+      if current_idx >= String.length source then
+        Error (ScanError(current_line, "Unterminated string"))
+      else match source.[current_idx] with
+      | '"' -> Ok (current_idx, current_line)
+      | '\n' -> find_end (current_idx + 1) (current_line + 1)
+      | _ -> find_end (current_idx + 1) current_line
+    in match find_end (idx + 1) line with
+    | Error e -> Error e
+    | Ok (end_pos, final_line) ->
+        let content = String.sub source (idx + 1) (end_pos - idx - 1) in
+        let lexeme = "\"" ^ content ^ "\"" in
+        let token = make_token STRING lexeme ~literal:(L_STRING content) final_line in 
+        Ok (token, final_line, end_pos + 1)
 
-  let read_number source line idx: (string * int, Error.t) result = 
-    let rec aux source idx dot = 
-      if idx >= String.length source then
-        (idx-1)
-      else
-        let c = source.[idx] in
+  let scan_number source line idx: (token * int * int, Error.t) result = 
+    let rec aux idx dot = 
+      if idx >= String.length source then (idx-1)
+      else let c = source.[idx] in
         match c with 
-        | ('0'..'9') -> aux source (idx+1) dot
+        | ('0'..'9') -> aux (idx+1) dot
         | '.' -> 
-          if dot then 
-            idx-1
-          else
-            aux source (idx+1) true
+          if dot then idx-1
+          else aux (idx+1) true
         | _ -> idx-1
     in
-    let end_pos = aux source (idx + 1) false in
+    let end_pos = aux (idx + 1) false in
     let lexeme = String.sub source idx (end_pos - idx + 1) in
     let literal = Float.of_string_opt lexeme in
     match literal with 
-    | Some _f -> Ok(lexeme, (end_pos + 1))
     | None -> Error(ScanError(line, "Unexpected error tokenizing number"))
+    | Some f -> 
+      let token = make_token NUMBER lexeme ~literal:(L_NUM f) line in
+      Ok(token, line, end_pos + 1)
 
-  let is_alpha_num = function 
+
+  let is_digit = function 
+    | ('0'..'9') -> true
+    | _ -> false
+
+  let is_alpha = function 
     | ('a'..'z') -> true
     | ('A'..'Z') -> true
-    | ('0'..'9') -> true
     | '_' -> true
+    | _ -> false
+
+  let is_alpha_num = function 
+    | c when is_alpha c -> true
+    | c when is_digit c -> true
     | _ -> false
 
   let map_identifier_to_token = function
@@ -169,77 +176,76 @@ module Lexer = struct
   | "while" -> WHILE
   | _ -> IDENTIFIER
 
-  let read_identifier source line idx = 
+  let scan_identifier source line idx = 
     let end_pos = read_until source idx (fun c -> Bool.not(is_alpha_num c)) in
     let lexeme = String.sub source idx (end_pos - idx) in 
     let id_type = map_identifier_to_token lexeme in
-    add_token id_type lexeme line end_pos
+    let literal = match id_type with
+      | TRUE -> L_BOOL true
+      | FALSE -> L_BOOL false
+      | _ -> L_NIL
+    in
+    let token = make_token id_type lexeme ~literal:(literal) line in 
+    token, line, end_pos
 
-  let scan_token source line idx : (token * int * int, Error.t) result =
-    if idx >= String.length source then
-      Error(ScanError(line, "Unexpected end of input"))
-    else
-      let c = source.[idx] in
-      match c with
-      | '(' -> Ok(add_token LEFT_PAR "(" line (idx + 1))
-      | ')' -> Ok(add_token RIGHT_PAR ")" line (idx + 1))
-      | '{' -> Ok(add_token LEFT_BRA "{" line (idx + 1))
-      | '}' -> Ok(add_token RIGHT_BRA "}" line (idx + 1))
-      | ',' -> Ok(add_token COMMA "," line (idx + 1))
-      | '.' -> Ok(add_token DOT "." line (idx + 1))
-      | ';' -> Ok(add_token SEMICOLON ";" line (idx + 1))
-      | '-' -> Ok(add_token MINUS "-" line (idx + 1))
-      | '+' -> Ok(add_token PLUS "+" line (idx + 1))
-      | '*' -> Ok(add_token STAR "*" line (idx + 1))
-      | '/' -> 
-          if next_char_is source idx '/' then
-            Ok(add_token SKIP "" (line+1) (comment_end_pos source idx))
-          else
-            Ok(add_token SLASH "/" line (idx + 1))
-      | '!' -> 
-          if next_char_is source idx '=' then
-            Ok (add_token BANG_EQUAL "!=" line (idx + 2))
-          else
-            Ok (add_token BANG "!" line (idx + 1))
-      | '=' -> 
-          if next_char_is source idx '=' then
-            Ok (add_token EQUAL_EQUAL "==" line (idx + 2))
-          else
-            Ok (add_token EQUAL "=" line (idx + 1))
-      | '<' -> 
-          if next_char_is source idx '=' then
-            Ok (add_token LESS_EQUAL "<=" line (idx + 2))
-          else
-            Ok (add_token LESS "<" line (idx + 1))
-      | '>' -> 
-          if next_char_is source idx '=' then
-            Ok (add_token GREATER_EQUAL ">=" line (idx + 2))
-          else
-            Ok (add_token GREATER_EQUAL ">" line (idx + 1))
-      | '"' -> 
-          (match read_string source line idx with
-           | Ok (lexeme, line', pos) -> Ok (add_token STRING lexeme line' pos)
-           | Error e -> Error e)
-      | ('0'..'9') -> 
-          (match read_number source line idx with
-           | Ok (lexeme, pos) -> Ok (add_token NUMBER lexeme line pos)
-           | Error e -> Error e)
-      | c when is_alpha_num c -> Ok(read_identifier source line idx)
-      | '\n' -> Ok(add_token SKIP "" (line+1) (idx + 1)) 
-      | ' ' -> Ok(add_token SKIP " " line (idx + 1))
-      | _ -> Error(ScanError(line, Printf.sprintf "Unexpected character '%c'" c))
+  let rec skip_whitespace_and_comments source line idx: int* int = 
+    if idx >= String.length source then (line, idx) 
+    else match source.[idx] with
+    | ' ' |'\r' | '\t' -> skip_whitespace_and_comments source line (idx+1)
+    | '\n' -> skip_whitespace_and_comments source (line+1) (idx+1)
+    | '/' when next_char_is source idx '/' ->
+        let end_pos = comment_end_pos source idx in
+        skip_whitespace_and_comments source (line+1) end_pos
+    | _ -> (line, idx)
+
+  let scan_token source line idx: (token * int * int, Error.t) result =
+    let single ttype lexeme = Ok (make_token ttype lexeme line, line, idx + 1) in
+    let double ttype lexeme = Ok (make_token ttype lexeme line, line, idx + 2) in
+    
+    let c = source.[idx] in
+    match c with
+    | '(' -> single LEFT_PAR "(" 
+    | ')' -> single RIGHT_PAR ")"
+    | '{' -> single LEFT_BRA "{" 
+    | '}' -> single RIGHT_BRA "}" 
+    | ',' -> single COMMA "," 
+    | '.' -> single DOT "." 
+    | ';' -> single SEMICOLON ";" 
+    | '-' -> single MINUS "-" 
+    | '+' -> single PLUS "+" 
+    | '*' -> single STAR "*" 
+    | '/' -> single SLASH "/" 
+    | '!' -> 
+      if next_char_is source idx '=' 
+      then double BANG_EQUAL "!=" 
+      else single BANG "!" 
+    | '=' -> 
+      if next_char_is source idx '=' 
+      then double EQUAL_EQUAL "==" 
+      else single EQUAL "=" 
+    | '<' -> 
+      if next_char_is source idx '=' 
+      then double LESS_EQUAL "<=" 
+      else single LESS "<" 
+    | '>' -> 
+      if next_char_is source idx '=' 
+      then double GREATER_EQUAL ">=" 
+      else single GREATER ">" 
+    | '"' -> scan_string source line idx
+    | c when is_digit c -> scan_number source line idx
+    | c when is_alpha c -> Ok (scan_identifier source line idx)
+    | _ -> Error (ScanError (line, Printf.sprintf "Unexpected character '%c'" c))
 
   let tokenize source : (token list) * (Error.t list) =
     let rec aux line idx tokens errors =
-      if idx >= String.length source then
-        (List.rev tokens, List.rev errors)
-      else
-        match scan_token source line idx with
-        | Ok (token, line', idx') ->
-            aux line' idx' (token :: tokens) errors
-        | Error e ->
-            aux line (idx + 1) tokens (e :: errors)
-    in
-    let tokens, errors = aux 1 0 [] [] in
-    (List.filter (fun t -> t.ttype <> SKIP) tokens, errors)
+      let (line', idx') = skip_whitespace_and_comments source line idx in 
+      if idx' >= String.length source then
+        let eof_token = make_token EOF "" line' in
+        (List.rev (eof_token::tokens), List.rev errors)
+      else match scan_token source line' idx' with
+        | Error e -> aux line' (idx' + 1) tokens (e :: errors)
+        | Ok (token, n_line, n_idx) ->
+            aux n_line n_idx (token :: tokens) errors
+    in let tokens, errors = aux 1 0 [] []
+    in (tokens, errors)
 end

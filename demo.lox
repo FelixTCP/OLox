@@ -1,6 +1,6 @@
-var bool = (122.0 + 2) != 2.789 // comment
+var bool = (122.0 + 2) * 3 != 2.789 // comment
 
-if (bool) {
+if (bool == true) {
   print "BigBrother"
 }
 
