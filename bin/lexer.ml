@@ -284,7 +284,7 @@ module Lexer = struct
     | c when is_alpha c -> Ok (scan_identifier source line idx)
     | _ -> Error (ScanError (line, Printf.sprintf "Unexpected character '%c'" c))
 
-  let tokenize source : token list * Error.t list =
+  let tokenize source : (token list, Error.t list) result =
     let rec aux line idx tokens errors =
       let line', idx' = skip_whitespace_and_comments source line idx in
       if idx' >= String.length source then
@@ -295,6 +295,7 @@ module Lexer = struct
         | Error e -> aux line' (idx' + 1) tokens (e :: errors)
         | Ok (token, n_line, n_idx) -> aux n_line n_idx (token :: tokens) errors
     in
-    let tokens, errors = aux 1 0 [] [] in
-    tokens, errors
+    match aux 1 0 [] [] with
+    | tokens, [] -> Ok tokens
+    | _, errors -> Error errors
 end

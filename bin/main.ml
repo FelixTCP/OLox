@@ -1,19 +1,12 @@
 open Lexer
+open Parser
 
-let parse tokens = List.iter (fun t -> print_endline (Token.to_string t)) tokens
-
-let parse_if_no_errors = function
-  | tkns, errs ->
-      (* if List.length errs = 0 then *)
-      (*   parse tkns *)
-      (* else *)
-      (*   List.iter (fun e -> print_endline (Error.to_string e)) errs *)
-      parse tkns ;
-      List.iter (fun e -> print_endline (Error.to_string e)) errs
+let print_errors errors = List.iter (fun e -> Error.print_error e) errors
 
 let run file =
-  let tokens, errors = Lexer.tokenize file in
-  parse_if_no_errors (tokens, errors)
+  match Lexer.tokenize file with
+  | Error errs -> print_errors errs
+  | Ok tokens -> Parser.parse tokens |> AST.print
 
 let run_file filename =
   let file = In_channel.with_open_bin filename In_channel.input_all in
@@ -32,14 +25,7 @@ let rec run_prompt () =
         run_prompt ()
   with End_of_file -> exit_prompt ()
 
-let print_ast () =
-  let ast = Parser.AST.get_demo () in
-  Parser.AST.print ast ;
-  print_endline ""
-
 let main () =
-  let () = print_ast () in
-
   let amt = Array.length Sys.argv in
   if amt > 2 then
     print_endline "Usage: olox [filename]"
