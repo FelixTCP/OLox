@@ -1,0 +1,56 @@
+# .ocamlformat configuration file
+# This controls how ocamlformat formats your code
+
+version=0.27.0
+
+# Profile options: default, compact, sparse, janestreet
+profile=default
+
+# Break cases: fit, nested, toplevel, fit-or-vertical, all
+break-cases=fit-or-vertical
+
+# Break sequences (like your let () example)
+break-sequences=true
+
+# Cases exp indentation
+cases-exp-indent=4
+
+# Function indentation  
+function-indent=2
+
+# Let binding indentation
+let-binding-indent=2
+
+# Match indentation
+match-indent=0
+match-indent-nested=auto
+
+# Sequence style: separator, terminator, before
+sequence-style=separator
+
+# If-then-else: compact, fit-or-vertical, keyword-first, k-r
+if-then-else=fit-or-vertical
+
+# Indicate multiline delimiters
+indicate-multiline-delimiters=closing-on-separate-line
+
+# Margin (line length)
+margin=80
+
+# Parse docstrings
+parse-docstrings=true
+
+# Type decl indent
+type-decl-indent=2
+
+# Wrap comments
+wrap-comments=true
+
+# Field space: loose, tight, tight-decl
+field-space=loose
+
+# Parens tuple: always, multi-line-only
+parens-tuple=multi-line-only
+
+# Break collection expressions
+break-collection-expressions=fit-or-vertical
