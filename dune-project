@@ -5,22 +5,22 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github FelixTCP/OLox))
 
-(authors "Author Name <author@example.com>")
+(authors "Felix")
 
-(maintainers "Maintainer Name <maintainer@example.com>")
+(maintainers "Felix")
 
-(license LICENSE)
+(license GPL-3.0)
 
-(documentation https://url/to/documentation)
+(documentation https://github.com/FelixTCP/OLox/blob/main/README.md)
 
 (package
  (name olox)
- (synopsis "A short synopsis")
- (description "A longer description")
+ (synopsis "OCaml based Interpreter for the Lox Language")
+ (description "An OCaml based Interpreter for the Lox Language - inspired by the book 'crafting interpreters'")
  (depends ocaml)
  (tags
-  ("add topics" "to describe" your project)))
+  ("lox" "interpreter" "learning")))
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html
