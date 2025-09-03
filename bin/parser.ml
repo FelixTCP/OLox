@@ -154,8 +154,11 @@ module Parser = struct
         expression rest >>= fun (expr, rest') ->
         expect_token Token.RIGHT_PAR rest' "Expect ')' after expression"
         >>= fun (_, rest'') -> Ok (GROUPING expr, rest'')
-    | t :: _ as rest ->
-        let found = if List.length rest = 0 then "none" else (List.hd rest).lexeme in
+    | t :: rest ->
+        let found =
+          (* <= 1 because of EOF token at the end *)
+          if List.length rest <= 1 then "none" else (List.hd rest).lexeme
+        in
         Error
           [
             parse_error t

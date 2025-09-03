@@ -3,7 +3,7 @@ open Parser
 open Interpreter
 
 let print_errors errors = List.iter (fun e -> Error.print_error e) errors
-let print_result result = Interpreter.stringify_result result |> print_endline
+let print_result result = result |> Interpreter.stringify_result |> print_endline
 
 let ( >>= ) result f =
   match result with
