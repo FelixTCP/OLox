@@ -45,11 +45,7 @@ module Token = struct
     (* EOF *)
     | EOF
 
-  type literal_type =
-    | L_STRING of string
-    | L_NUM of float
-    | L_BOOL of bool
-    | L_NIL
+  type literal_type = L_STRING of string | L_NUM of float | L_BOOL of bool | L_NIL
 
   type token = {
     ttype : token_type;
@@ -106,23 +102,18 @@ module Token = struct
     | L_NIL -> "NIL"
 
   let to_string token =
-    ttype_to_string token.ttype
-    ^ " " ^ token.lexeme ^ " "
+    ttype_to_string token.ttype ^ " " ^ token.lexeme ^ " "
     ^ literal_to_string token.literal
 
-  let make_eof_token () : token =
-    let aux ttype lexeme ?(literal = L_NIL) line =
-      { ttype; lexeme; literal; line }
-    in
-    aux EOF "" (-1)
+  let make_token ttype lexeme ?(literal = L_NIL) line =
+    { ttype; lexeme; literal; line }
+
+  let make_eof_token () : token = make_token EOF "" (-1)
 end
 
 module Lexer = struct
   open Error
   open Token
-
-  let make_token ttype lexeme ?(literal = L_NIL) line =
-    { ttype; lexeme; literal; line }
 
   let next_char_is source idx expected =
     let idx' = idx + 1 in
@@ -245,12 +236,8 @@ module Lexer = struct
       | _ -> line, idx
 
   let scan_token source line idx : (token * int * int, Error.t) result =
-    let single ttype lexeme =
-      Ok (make_token ttype lexeme line, line, idx + 1)
-    in
-    let double ttype lexeme =
-      Ok (make_token ttype lexeme line, line, idx + 2)
-    in
+    let single ttype lexeme = Ok (make_token ttype lexeme line, line, idx + 1) in
+    let double ttype lexeme = Ok (make_token ttype lexeme line, line, idx + 2) in
 
     let c = source.[idx] in
     match c with

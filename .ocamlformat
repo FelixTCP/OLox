@@ -9,7 +9,7 @@ profile=default
 # Break cases: fit, nested, toplevel, fit-or-vertical, all
 break-cases=fit-or-vertical
 
-# Break sequences (like your let () example)
+# Break sequences 
 break-sequences=true
 
 # Cases exp indentation
@@ -35,7 +35,7 @@ if-then-else=fit-or-vertical
 indicate-multiline-delimiters=closing-on-separate-line
 
 # Margin (line length)
-margin=80
+margin=85
 
 # Parse docstrings
 parse-docstrings=true

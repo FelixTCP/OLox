@@ -16,28 +16,26 @@ module AST = struct
       | LEAF -> ""
       | NODE (expr, lc, rc) ->
           let indent_str = String.make (indent * 2) ' ' in
+          let fmt = Printf.sprintf in
           let expr_str =
             match expr with
             | LITERAL lit -> (
                 match lit with
-                | L_BOOL b ->
-                    Printf.sprintf "%sLiteral: Bool(%b)\n" indent_str b
-                | L_STRING s ->
-                    Printf.sprintf "%sLiteral: String(\"%s\")\n" indent_str s
-                | L_NUM f -> Printf.sprintf "%sLiteral: Num(%f)\n" indent_str f
-                | L_NIL -> Printf.sprintf "%sLiteral: Nil\n" indent_str
+                | L_BOOL b -> fmt "%sLiteral: Bool(%b)\n" indent_str b
+                | L_STRING s -> fmt "%sLiteral: String(\"%s\")\n" indent_str s
+                | L_NUM f -> fmt "%sLiteral: Num(%f)\n" indent_str f
+                | L_NIL -> fmt "%sLiteral: Nil\n" indent_str
               )
             | UNARY (op, expr) ->
                 let sub_expr = aux (indent + 1) (NODE (expr, LEAF, LEAF)) in
-                Printf.sprintf "%sUnary: %s\n%s" indent_str op.lexeme sub_expr
+                fmt "%sUnary: %s\n%s" indent_str op.lexeme sub_expr
             | BINARY (l_expr, op, r_expr) ->
                 let left_str = aux (indent + 1) (NODE (l_expr, LEAF, LEAF)) in
                 let right_str = aux (indent + 1) (NODE (r_expr, LEAF, LEAF)) in
-                Printf.sprintf "%sBinary: %s\n%s%s" indent_str op.lexeme
-                  left_str right_str
+                fmt "%sBinary: %s\n%s%s" indent_str op.lexeme left_str right_str
             | GROUPING expr ->
                 let sub_expr = aux (indent + 1) (NODE (expr, LEAF, LEAF)) in
-                Printf.sprintf "%sGrouping:\n%s" indent_str sub_expr
+                fmt "%sGrouping:\n%s" indent_str sub_expr
           in
           expr_str ^ aux (indent + 1) lc ^ aux (indent + 1) rc
     in
@@ -102,10 +100,8 @@ module Parser = struct
     term tokens >>= fun (left, rest) ->
     let rec loop l tkns =
       match (tkns : Token.token list) with
-      | ({ ttype = GREATER | GREATER_EQUAL | LESS | LESS_EQUAL; _ } as t)
-        :: rest' ->
-          term rest' >>= fun (right, rest'') ->
-          loop (BINARY (l, t, right)) rest''
+      | ({ ttype = GREATER | GREATER_EQUAL | LESS | LESS_EQUAL; _ } as t) :: rest' ->
+          term rest' >>= fun (right, rest'') -> loop (BINARY (l, t, right)) rest''
       | _ -> Ok (l, tkns)
     in
     loop left rest
@@ -116,8 +112,7 @@ module Parser = struct
     let rec loop l tkns =
       match (tkns : Token.token list) with
       | ({ ttype = MINUS | PLUS; _ } as t) :: rest' ->
-          factor rest' >>= fun (right, rest'') ->
-          loop (BINARY (l, t, right)) rest''
+          factor rest' >>= fun (right, rest'') -> loop (BINARY (l, t, right)) rest''
       | _ -> Ok (l, tkns)
     in
     loop left rest
@@ -128,8 +123,7 @@ module Parser = struct
     let rec loop l tkns =
       match (tkns : Token.token list) with
       | ({ ttype = STAR | SLASH; _ } as t) :: rest' ->
-          unary rest' >>= fun (right, rest'') ->
-          loop (BINARY (l, t, right)) rest''
+          unary rest' >>= fun (right, rest'') -> loop (BINARY (l, t, right)) rest''
       | _ -> Ok (l, tkns)
     in
     loop left rest
@@ -145,8 +139,7 @@ module Parser = struct
       (expr * Token.token list, Error.t list) result =
     match tokens with
     | { ttype = NIL; _ } :: rest -> Ok (LITERAL L_NIL, rest)
-    | ({ ttype = STRING; _ } as t) :: rest ->
-        Ok (LITERAL (L_STRING t.lexeme), rest)
+    | ({ ttype = STRING; _ } as t) :: rest -> Ok (LITERAL (L_STRING t.lexeme), rest)
     | ({ ttype = NUMBER; _ } as t) :: rest -> (
         try
           let num = Float.of_string t.lexeme in
@@ -162,9 +155,7 @@ module Parser = struct
         expect_token Token.RIGHT_PAR rest' "Expect ')' after expression"
         >>= fun (_, rest'') -> Ok (GROUPING expr, rest'')
     | t :: _ as rest ->
-        let found =
-          if List.length rest = 0 then "none" else (List.hd rest).lexeme
-        in
+        let found = if List.length rest = 0 then "none" else (List.hd rest).lexeme in
         Error
           [
             parse_error t
@@ -177,7 +168,6 @@ module Parser = struct
     | Ok (expr, [ { ttype = EOF; _ } ]) -> Ok expr
     | Ok (_, remaining) ->
         let remaining_token = List.hd remaining in
-        Error
-          [ parse_error remaining_token "Unexpected token after expression" ]
+        Error [ parse_error remaining_token "Unexpected token after expression" ]
     | Error errors -> Error errors
 end

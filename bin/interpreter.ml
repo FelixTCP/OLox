@@ -13,8 +13,7 @@ module Interpreter = struct
     | Ok x -> f x
     | Error e -> Error e
 
-  let runtime_error (token : Token.token) msg =
-    Error.RuntimeError (token.line, msg)
+  let runtime_error (token : Token.token) msg = Error.RuntimeError (token.line, msg)
 
   let is_truthy expr =
     match expr with
@@ -30,8 +29,7 @@ module Interpreter = struct
     | LOX_NIL, LOX_NIL -> true
     | _, _ -> false
 
-  let eval_unary_expr (op : Token.token) value :
-      (lox_value, Error.t list) result =
+  let eval_unary_expr (op : Token.token) value : (lox_value, Error.t list) result =
     match op.ttype, value with
     | MINUS, LOX_NUM n -> Ok (LOX_NUM (-.n))
     | MINUS, _ -> Error [ runtime_error op "Operand must be a number" ]
@@ -68,8 +66,7 @@ module Interpreter = struct
     | _, EQUAL_EQUAL, _ -> Ok (LOX_BOOL (is_equal left_val right_val))
     | _ -> Error [ runtime_error op "Unknown binary operator" ]
 
-  let rec eval_expr (expr : Expression.expr) : (lox_value, Error.t list) result
-      =
+  let rec eval_expr (expr : Expression.expr) : (lox_value, Error.t list) result =
     match expr with
     | Expression.LITERAL lit -> (
         match lit with
@@ -90,9 +87,7 @@ module Interpreter = struct
     | NODE (expr, _, _) -> eval_expr expr
     | _ ->
         Error
-          [
-            runtime_error (Token.make_eof_token ()) "Expected valid syntax-tree";
-          ]
+          [ runtime_error (Token.make_eof_token ()) "Expected valid syntax-tree" ]
 
   let stringify_result = function
     | LOX_BOOL b -> string_of_bool b
