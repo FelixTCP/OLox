@@ -11,137 +11,165 @@ module AST = struct
 
   type ast = NODE of expr * ast * ast | LEAF
 
-  let print ast =
+  let to_string ast : (string, Error.t list) result =
     let rec aux indent = function
-      | LEAF -> ()
+      | LEAF -> ""
       | NODE (expr, lc, rc) ->
           let indent_str = String.make (indent * 2) ' ' in
-          ( match expr with
-          | Literal lit -> (
-              Printf.printf "%sLiteral: " indent_str ;
-              match lit with
-              | L_BOOL b -> Printf.printf "Bool(%b)\n" b
-              | L_STRING s -> Printf.printf "String(\"%s\")\n" s
-              | L_NUM f -> Printf.printf "Num(%f)\n" f
-              | L_NIL -> Printf.printf "Nil\n"
-            )
-          | Unary (op, expr) ->
-              Printf.printf "%sUnary: %s\n" indent_str op.lexeme ;
-              aux (indent + 1) (NODE (expr, LEAF, LEAF))
-          | Binary (l_expr, op, r_expr) ->
-              Printf.printf "%sBinary: %s\n" indent_str op.lexeme ;
-              aux (indent + 1) (NODE (l_expr, LEAF, LEAF)) ;
-              aux (indent + 1) (NODE (r_expr, LEAF, LEAF))
-          | Grouping expr ->
-              Printf.printf "%sGrouping:\n" indent_str ;
-              aux (indent + 1) (NODE (expr, LEAF, LEAF))
-          ) ;
-          aux (indent + 1) lc ;
-          aux (indent + 1) rc
+          let expr_str =
+            match expr with
+            | Literal lit -> (
+                match lit with
+                | L_BOOL b ->
+                    Printf.sprintf "%sLiteral: Bool(%b)\n" indent_str b
+                | L_STRING s ->
+                    Printf.sprintf "%sLiteral: String(\"%s\")\n" indent_str s
+                | L_NUM f -> Printf.sprintf "%sLiteral: Num(%f)\n" indent_str f
+                | L_NIL -> Printf.sprintf "%sLiteral: Nil\n" indent_str
+              )
+            | Unary (op, expr) ->
+                let sub_expr = aux (indent + 1) (NODE (expr, LEAF, LEAF)) in
+                Printf.sprintf "%sUnary: %s\n%s" indent_str op.lexeme sub_expr
+            | Binary (l_expr, op, r_expr) ->
+                let left_str = aux (indent + 1) (NODE (l_expr, LEAF, LEAF)) in
+                let right_str = aux (indent + 1) (NODE (r_expr, LEAF, LEAF)) in
+                Printf.sprintf "%sBinary: %s\n%s%s" indent_str op.lexeme
+                  left_str right_str
+            | Grouping expr ->
+                let sub_expr = aux (indent + 1) (NODE (expr, LEAF, LEAF)) in
+                Printf.sprintf "%sGrouping:\n%s" indent_str sub_expr
+          in
+          expr_str ^ aux (indent + 1) lc ^ aux (indent + 1) rc
     in
-    aux 0 ast
+    Ok (aux 0 ast)
 
-  let get_demo () =
-    let expr1 =
-      Unary
-        ( { ttype = MINUS; lexeme = "-"; literal = L_NIL; line = 1 },
-          Literal (L_NUM 123.0)
-        )
-    in
-    let expr2 = Grouping (Literal (L_NUM 45.67)) in
-    let root_expr =
-      Binary
-        (expr1, { ttype = STAR; lexeme = "*"; literal = L_NIL; line = 1 }, expr2)
-    in
-    NODE (root_expr, LEAF, LEAF)
+  let build_ast expr : (ast, Error.t list) result =
+    let ast = NODE (expr, LEAF, LEAF) in
+    Ok ast
 end
 
 module Parser = struct
   open Lexer
-  open Error
   open Expression
-  open AST
 
+  (* Helper functions for error handling *)
+  let make_eof_token () = Lexer.make_token Token.EOF "" (-1)
   let parse_error (token : Token.token) msg = Error.ParseError (token.line, msg)
 
-  let expect_token (token_type : Token.token_type) (tokens : Token.token list)
-      msg =
-    match tokens with
+  (* Result combinators to reduce boilerplate *)
+  let ( >>= ) result f =
+    match result with
+    | Ok x -> f x
+    | Error e -> Error e
+
+  let ( >>| ) result f =
+    match result with
+    | Ok x -> Ok (f x)
+    | Error e -> Error e
+
+  let bind_errors result1 result2_fn =
+    match result1, result2_fn () with
+    | Ok x, Ok y -> Ok (x, y)
+    | Error e1, Error e2 -> Error (e1 @ e2)
+    | Error e, Ok _ -> Error e
+    | Ok _, Error e -> Error e
+
+  (* Helper to expect a specific token type *)
+  let expect_token token_type tokens msg =
+    match (tokens : Token.token list) with
     | t :: rest when t.ttype = token_type -> Ok (t, rest)
-    | t :: _ -> Error (parse_error t msg)
-    | [] -> Error (parse_error (Lexer.make_token EOF "" (-1)) msg)
+    | t :: _ -> Error [ parse_error t msg ]
+    | [] -> Error [ parse_error (make_eof_token ()) msg ]
 
-  let rec expression tokens : expr * Token.token list = equality tokens
+  (* Main parsing functions with error handling *)
+  let rec expression tokens : (expr * Token.token list, Error.t list) result =
+    equality tokens
 
-  and equality (tokens : Token.token list) : expr * Token.token list =
-    let left, rest = comparison tokens in
-    let rec loop (l : expr) (tkns : Token.token list) : expr * Token.token list
-        =
+  and equality (tokens : Token.token list) :
+      (expr * Token.token list, Error.t list) result =
+    comparison tokens >>= fun (left, rest) ->
+    let rec loop l tkns : (expr * Token.token list, Error.t list) result =
       match (tkns : Token.token list) with
       | ({ ttype = BANG_EQUAL | EQUAL_EQUAL; _ } as t) :: rest' ->
-          let right, rest'' = comparison rest' in
+          comparison rest' >>= fun (right, rest'') ->
           loop (Binary (l, t, right)) rest''
-      | _ -> l, tkns
+      | _ -> Ok (l, tkns)
     in
     loop left rest
 
-  and comparison (tokens : Token.token list) : expr * Token.token list =
-    let left, rest = term tokens in
+  and comparison (tokens : Token.token list) :
+      (expr * Token.token list, Error.t list) result =
+    term tokens >>= fun (left, rest) ->
     let rec loop l tkns =
       match (tkns : Token.token list) with
       | ({ ttype = GREATER | GREATER_EQUAL | LESS | LESS_EQUAL; _ } as t)
         :: rest' ->
-          let right, rest'' = term rest' in
+          term rest' >>= fun (right, rest'') ->
           loop (Binary (l, t, right)) rest''
-      | _ -> l, tkns
+      | _ -> Ok (l, tkns)
     in
     loop left rest
 
-  and term (tokens : Token.token list) : expr * Token.token list =
-    let left, rest = factor tokens in
+  and term (tokens : Token.token list) :
+      (expr * Token.token list, Error.t list) result =
+    factor tokens >>= fun (left, rest) ->
     let rec loop l tkns =
       match (tkns : Token.token list) with
       | ({ ttype = MINUS | PLUS; _ } as t) :: rest' ->
-          let right, rest'' = factor rest' in
+          factor rest' >>= fun (right, rest'') ->
           loop (Binary (l, t, right)) rest''
-      | _ -> l, tkns
+      | _ -> Ok (l, tkns)
     in
     loop left rest
 
-  and factor (tokens : Token.token list) : expr * Token.token list =
-    let left, rest = unary tokens in
+  and factor (tokens : Token.token list) :
+      (expr * Token.token list, Error.t list) result =
+    unary tokens >>= fun (left, rest) ->
     let rec loop l tkns =
       match (tkns : Token.token list) with
       | ({ ttype = STAR | SLASH; _ } as t) :: rest' ->
-          let right, rest'' = unary rest' in
+          unary rest' >>= fun (right, rest'') ->
           loop (Binary (l, t, right)) rest''
-      | _ -> l, tkns
+      | _ -> Ok (l, tkns)
     in
     loop left rest
 
-  and unary (tokens : Token.token list) : expr * Token.token list =
+  and unary (tokens : Token.token list) :
+      (expr * Token.token list, Error.t list) result =
     match tokens with
     | ({ ttype = BANG | MINUS; _ } as t) :: rest ->
-        let expr, rest' = unary rest in
-        Unary (t, expr), rest'
+        unary rest >>= fun (expr, rest') -> Ok (Unary (t, expr), rest')
     | _ -> primary tokens
 
-  and primary (tokens : Token.token list) : expr * Token.token list =
+  and primary (tokens : Token.token list) :
+      (expr * Token.token list, Error.t list) result =
     match tokens with
-    | { ttype = NIL; _ } :: rest -> Literal L_NIL, rest
-    | ({ ttype = STRING; _ } as t) :: rest -> Literal (L_STRING t.lexeme), rest
-    | ({ ttype = NUMBER; _ } as t) :: rest ->
-        Literal (L_NUM (Float.of_string t.lexeme)), rest
+    | { ttype = NIL; _ } :: rest -> Ok (Literal L_NIL, rest)
+    | ({ ttype = STRING; _ } as t) :: rest ->
+        Ok (Literal (L_STRING t.lexeme), rest)
+    | ({ ttype = NUMBER; _ } as t) :: rest -> (
+        try
+          let num = Float.of_string t.lexeme in
+          Ok (Literal (L_NUM num), rest)
+        with Failure _ ->
+          Error [ parse_error t ("Invalid number format: " ^ t.lexeme) ]
+      )
     | ({ ttype = TRUE | FALSE; _ } as t) :: rest ->
         let lit = if t.ttype = TRUE then true else false in
-        Literal (L_BOOL lit), rest
-    | { ttype = LEFT_PAR; _ } :: rest -> (
-        let expr, rest' = expression rest in
-        match rest' with
-        | { ttype = RIGHT_PAR; _ } :: rest'' -> Grouping expr, rest''
-        | _ -> failwith "syntax error: exprected ')' after expression"
-      )
-    | _ -> failwith "syntax error: wrong token"
+        Ok (Literal (L_BOOL lit), rest)
+    | { ttype = LEFT_PAR; _ } :: rest ->
+        expression rest >>= fun (expr, rest') ->
+        expect_token Token.RIGHT_PAR rest' "Expect ')' after expression"
+        >>= fun (_, rest'') -> Ok (Grouping expr, rest'')
+    | t :: _ -> Error [ parse_error t "Expect expression" ]
+    | [] -> Error [ parse_error (make_eof_token ()) "Expect expression" ]
 
-  (* let parse (tokens : Token.token list) : AST.ast = expression tokens *)
+  let parse (tokens : Token.token list) : (expr, Error.t list) result =
+    match expression tokens with
+    | Ok (expr, [ { ttype = EOF; _ } ]) -> Ok expr
+    | Ok (_, remaining) ->
+        let remaining_token = List.hd remaining in
+        Error
+          [ parse_error remaining_token "Unexpected token after expression" ]
+    | Error errors -> Error errors
 end
