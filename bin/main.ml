@@ -1,8 +1,9 @@
 open Lexer
 open Parser
+open Interpreter
 
 let print_errors errors = List.iter (fun e -> Error.print_error e) errors
-let print_result result = print_endline result
+let print_result result = Interpreter.stringify_result result |> print_endline
 
 let ( >>= ) result f =
   match result with
@@ -15,7 +16,8 @@ let run_pipeline result ~(on_success : _ -> unit) ~(on_error : _ -> unit) =
   | Error e -> on_error e
 
 let run file =
-  Lexer.tokenize file >>= Parser.parse >>= AST.build_ast >>= AST.to_string
+  Lexer.tokenize file >>= Parser.parse >>= AST.build_ast
+  >>= Interpreter.interpret_ast
   |> run_pipeline ~on_success:print_result ~on_error:print_errors
 
 let run_file filename =
@@ -28,8 +30,7 @@ let rec run_prompt () =
   print_endline "(Lox REPL) > " ;
   try
     match input_line stdin with
-    | "exit" -> exit_prompt ()
-    | "q" -> exit_prompt ()
+    | "exit" | "q" -> exit_prompt ()
     | line ->
         run line ;
         run_prompt ()

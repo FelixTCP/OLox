@@ -109,6 +109,12 @@ module Token = struct
     ttype_to_string token.ttype
     ^ " " ^ token.lexeme ^ " "
     ^ literal_to_string token.literal
+
+  let make_eof_token () : token =
+    let aux ttype lexeme ?(literal = L_NIL) line =
+      { ttype; lexeme; literal; line }
+    in
+    aux EOF "" (-1)
 end
 
 module Lexer = struct
@@ -149,7 +155,7 @@ module Lexer = struct
     | Error e -> Error e
     | Ok (end_pos, final_line) ->
         let content = String.sub source (idx + 1) (end_pos - idx - 1) in
-        let lexeme = "\"" ^ content ^ "\"" in
+        let lexeme = content in
         let token =
           make_token STRING lexeme ~literal:(L_STRING content) final_line
         in

@@ -3,7 +3,7 @@ type t =
   | ParseError of int * string
   | RuntimeError of int * string
 
-let corpus line label msg = Printf.sprintf "[line %d] %s: %s" line label msg
+let corpus line label msg = Printf.sprintf "%d | %s: %s" line label msg
 
 let to_string = function
   | ScanError (line, msg) -> corpus line "ScanError" msg

@@ -1,9 +1,9 @@
 module Expression = struct
   type expr =
-    | Literal of Lexer.Token.literal_type
-    | Unary of Lexer.Token.token * expr
-    | Binary of expr * Lexer.Token.token * expr
-    | Grouping of expr
+    | LITERAL of Lexer.Token.literal_type
+    | UNARY of Lexer.Token.token * expr
+    | BINARY of expr * Lexer.Token.token * expr
+    | GROUPING of expr
 end
 
 module AST = struct
@@ -18,7 +18,7 @@ module AST = struct
           let indent_str = String.make (indent * 2) ' ' in
           let expr_str =
             match expr with
-            | Literal lit -> (
+            | LITERAL lit -> (
                 match lit with
                 | L_BOOL b ->
                     Printf.sprintf "%sLiteral: Bool(%b)\n" indent_str b
@@ -27,15 +27,15 @@ module AST = struct
                 | L_NUM f -> Printf.sprintf "%sLiteral: Num(%f)\n" indent_str f
                 | L_NIL -> Printf.sprintf "%sLiteral: Nil\n" indent_str
               )
-            | Unary (op, expr) ->
+            | UNARY (op, expr) ->
                 let sub_expr = aux (indent + 1) (NODE (expr, LEAF, LEAF)) in
                 Printf.sprintf "%sUnary: %s\n%s" indent_str op.lexeme sub_expr
-            | Binary (l_expr, op, r_expr) ->
+            | BINARY (l_expr, op, r_expr) ->
                 let left_str = aux (indent + 1) (NODE (l_expr, LEAF, LEAF)) in
                 let right_str = aux (indent + 1) (NODE (r_expr, LEAF, LEAF)) in
                 Printf.sprintf "%sBinary: %s\n%s%s" indent_str op.lexeme
                   left_str right_str
-            | Grouping expr ->
+            | GROUPING expr ->
                 let sub_expr = aux (indent + 1) (NODE (expr, LEAF, LEAF)) in
                 Printf.sprintf "%sGrouping:\n%s" indent_str sub_expr
           in
@@ -53,7 +53,6 @@ module Parser = struct
   open Expression
 
   (* Helper functions for error handling *)
-  let make_eof_token () = Lexer.make_token Token.EOF "" (-1)
   let parse_error (token : Token.token) msg = Error.ParseError (token.line, msg)
 
   (* Result combinators to reduce boilerplate *)
@@ -79,12 +78,13 @@ module Parser = struct
     match (tokens : Token.token list) with
     | t :: rest when t.ttype = token_type -> Ok (t, rest)
     | t :: _ -> Error [ parse_error t msg ]
-    | [] -> Error [ parse_error (make_eof_token ()) msg ]
+    | [] -> Error [ parse_error (Token.make_eof_token ()) msg ]
 
   (* Main parsing functions with error handling *)
   let rec expression tokens : (expr * Token.token list, Error.t list) result =
     equality tokens
 
+  (* TODO: introduce abstraction to parse a binary left assoc expression *)
   and equality (tokens : Token.token list) :
       (expr * Token.token list, Error.t list) result =
     comparison tokens >>= fun (left, rest) ->
@@ -92,7 +92,7 @@ module Parser = struct
       match (tkns : Token.token list) with
       | ({ ttype = BANG_EQUAL | EQUAL_EQUAL; _ } as t) :: rest' ->
           comparison rest' >>= fun (right, rest'') ->
-          loop (Binary (l, t, right)) rest''
+          loop (BINARY (l, t, right)) rest''
       | _ -> Ok (l, tkns)
     in
     loop left rest
@@ -105,7 +105,7 @@ module Parser = struct
       | ({ ttype = GREATER | GREATER_EQUAL | LESS | LESS_EQUAL; _ } as t)
         :: rest' ->
           term rest' >>= fun (right, rest'') ->
-          loop (Binary (l, t, right)) rest''
+          loop (BINARY (l, t, right)) rest''
       | _ -> Ok (l, tkns)
     in
     loop left rest
@@ -117,7 +117,7 @@ module Parser = struct
       match (tkns : Token.token list) with
       | ({ ttype = MINUS | PLUS; _ } as t) :: rest' ->
           factor rest' >>= fun (right, rest'') ->
-          loop (Binary (l, t, right)) rest''
+          loop (BINARY (l, t, right)) rest''
       | _ -> Ok (l, tkns)
     in
     loop left rest
@@ -129,7 +129,7 @@ module Parser = struct
       match (tkns : Token.token list) with
       | ({ ttype = STAR | SLASH; _ } as t) :: rest' ->
           unary rest' >>= fun (right, rest'') ->
-          loop (Binary (l, t, right)) rest''
+          loop (BINARY (l, t, right)) rest''
       | _ -> Ok (l, tkns)
     in
     loop left rest
@@ -138,31 +138,39 @@ module Parser = struct
       (expr * Token.token list, Error.t list) result =
     match tokens with
     | ({ ttype = BANG | MINUS; _ } as t) :: rest ->
-        unary rest >>= fun (expr, rest') -> Ok (Unary (t, expr), rest')
+        unary rest >>= fun (expr, rest') -> Ok (UNARY (t, expr), rest')
     | _ -> primary tokens
 
   and primary (tokens : Token.token list) :
       (expr * Token.token list, Error.t list) result =
     match tokens with
-    | { ttype = NIL; _ } :: rest -> Ok (Literal L_NIL, rest)
+    | { ttype = NIL; _ } :: rest -> Ok (LITERAL L_NIL, rest)
     | ({ ttype = STRING; _ } as t) :: rest ->
-        Ok (Literal (L_STRING t.lexeme), rest)
+        Ok (LITERAL (L_STRING t.lexeme), rest)
     | ({ ttype = NUMBER; _ } as t) :: rest -> (
         try
           let num = Float.of_string t.lexeme in
-          Ok (Literal (L_NUM num), rest)
+          Ok (LITERAL (L_NUM num), rest)
         with Failure _ ->
           Error [ parse_error t ("Invalid number format: " ^ t.lexeme) ]
       )
     | ({ ttype = TRUE | FALSE; _ } as t) :: rest ->
         let lit = if t.ttype = TRUE then true else false in
-        Ok (Literal (L_BOOL lit), rest)
+        Ok (LITERAL (L_BOOL lit), rest)
     | { ttype = LEFT_PAR; _ } :: rest ->
         expression rest >>= fun (expr, rest') ->
         expect_token Token.RIGHT_PAR rest' "Expect ')' after expression"
-        >>= fun (_, rest'') -> Ok (Grouping expr, rest'')
-    | t :: _ -> Error [ parse_error t "Expect expression" ]
-    | [] -> Error [ parse_error (make_eof_token ()) "Expect expression" ]
+        >>= fun (_, rest'') -> Ok (GROUPING expr, rest'')
+    | t :: _ as rest ->
+        let found =
+          if List.length rest = 0 then "none" else (List.hd rest).lexeme
+        in
+        Error
+          [
+            parse_error t
+              ("Expected expression after " ^ t.lexeme ^ " but found " ^ found);
+          ]
+    | [] -> Error [ parse_error (Token.make_eof_token ()) "Expect expression" ]
 
   let parse (tokens : Token.token list) : (expr, Error.t list) result =
     match expression tokens with
