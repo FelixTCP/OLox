@@ -1,0 +1,17 @@
+## TODOs
+
+A list of features to be implemented in the language interpreter further down the road.
+
+### Further Language Features (Suggested by the Book)
+
+- [ ] **Multiline Comments**: Support for `/* ... */` style comments that can span multiple lines.
+- [ ] **Comma Operator**: Allows multiple expressions to be evaluated in a single statement, returning the last expression's value.
+- [ ] **Error for Binary Operator without left Operand**: Enforce syntax rules to prevent binary operators from being used without a left operand.
+- [ ] **Ternary Operator**: A concise way to perform conditional expressions, e.g., `condition ? expr1 : expr2`.
+- [ ] **Implicit Type Conversion**: Automatic conversion between types (e.g., string to number) during operations.
+
+### Optional Language Features (Nice to Have)
+
+- [ ] **Exponentiation Operator**: Support for the `**` operator to perform exponentiation, e.g., `2 ** 3` equals `8`.
+- [ ] **Increment/Decrement Operators**: Support for `++` and `--` operators to increase or decrease a variable's value by one.
+- [ ] **Typesafe Equality Operators**: Implement `===` and `!==` for strict equality checks without type coercion.
