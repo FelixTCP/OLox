@@ -4,46 +4,71 @@ module Expression = struct
     | UNARY of Lexer.Token.token * expr
     | BINARY of expr * Lexer.Token.token * expr
     | GROUPING of expr
+    | VARIABLE of Lexer.Token.token
+end
+
+module Statement = struct
+  type stmt =
+    | EXPR of Expression.expr
+    | PRNT of Expression.expr
+    | VAR_DEF of Lexer.Token.token * Expression.expr option
 end
 
 module AST = struct
   open Expression
 
-  type ast = NODE of expr * ast * ast | LEAF
+  type ast = PROGRAM of Statement.stmt list
 
-  let to_string ast : (string, Error.t list) result =
-    let rec aux indent = function
-      | LEAF -> ""
-      | NODE (expr, lc, rc) ->
-          let indent_str = String.make (indent * 2) ' ' in
-          let fmt = Printf.sprintf in
-          let expr_str =
-            match expr with
-            | LITERAL lit -> (
-                match lit with
-                | L_BOOL b -> fmt "%sLiteral: Bool(%b)\n" indent_str b
-                | L_STRING s -> fmt "%sLiteral: String(\"%s\")\n" indent_str s
-                | L_NUM f -> fmt "%sLiteral: Num(%f)\n" indent_str f
-                | L_NIL -> fmt "%sLiteral: Nil\n" indent_str
-              )
-            | UNARY (op, expr) ->
-                let sub_expr = aux (indent + 1) (NODE (expr, LEAF, LEAF)) in
-                fmt "%sUnary: %s\n%s" indent_str op.lexeme sub_expr
-            | BINARY (l_expr, op, r_expr) ->
-                let left_str = aux (indent + 1) (NODE (l_expr, LEAF, LEAF)) in
-                let right_str = aux (indent + 1) (NODE (r_expr, LEAF, LEAF)) in
-                fmt "%sBinary: %s\n%s%s" indent_str op.lexeme left_str right_str
-            | GROUPING expr ->
-                let sub_expr = aux (indent + 1) (NODE (expr, LEAF, LEAF)) in
-                fmt "%sGrouping:\n%s" indent_str sub_expr
-          in
-          expr_str ^ aux (indent + 1) lc ^ aux (indent + 1) rc
+  let to_string (ast : ast) : (string, Error.t list) result =
+    let rec expr_to_string indent expr =
+      let fmt = Printf.sprintf in
+      let indent_str = String.make (indent * 2) ' ' in
+      match expr with
+      | LITERAL lit -> (
+          match lit with
+          | Lexer.Token.L_BOOL b -> fmt "%sLiteral: Bool(%b)\n" indent_str b
+          | Lexer.Token.L_STRING s -> fmt "%sLiteral: String(\"%s\")\n" indent_str s
+          | Lexer.Token.L_NUM f -> fmt "%sLiteral: Num(%f)\n" indent_str f
+          | Lexer.Token.L_NIL -> fmt "%sLiteral: Nil\n" indent_str
+        )
+      | UNARY (op, sub_expr) ->
+          let sub_expr_str = expr_to_string (indent + 1) sub_expr in
+          fmt "%sUnary: %s\n%s" indent_str op.lexeme sub_expr_str
+      | BINARY (l_expr, op, r_expr) ->
+          let left_str = expr_to_string (indent + 1) l_expr in
+          let right_str = expr_to_string (indent + 1) r_expr in
+          fmt "%sBinary: %s\n%s%s" indent_str op.lexeme left_str right_str
+      | GROUPING sub_expr ->
+          let sub_expr_str = expr_to_string (indent + 1) sub_expr in
+          fmt "%sGrouping:\n%s" indent_str sub_expr_str
+      | VARIABLE name -> fmt "%sVariable:\n%s" indent_str name.lexeme
     in
-    Ok (aux 0 ast)
+    let rec aux indent (ast : Statement.stmt list) =
+      ast
+      |> List.fold_left
+           (fun acc stmt ->
+             let indent_str = String.make (indent * 2) ' ' in
+             let stmt_str =
+               match stmt with
+               | Statement.PRNT expr ->
+                   let expr_str = aux (indent + 1) [ Statement.EXPR expr ] in
+                   Printf.sprintf "%sPrint Statement:\n%s" indent_str expr_str
+               | Statement.EXPR expr -> expr_to_string indent expr
+               | Statement.VAR_DEF (id, None) ->
+                   Printf.sprintf "%sVar Declaration: %s\n" indent_str id.lexeme
+               | Statement.VAR_DEF (id, Some expr) ->
+                   let expr_str = expr_to_string (indent + 1) expr in
+                   Printf.sprintf "%sVar Initilazation: %s\n%s" indent_str id.lexeme
+                     expr_str
+             in
+             acc ^ stmt_str
+           )
+           ""
+    in
+    match ast with
+    | PROGRAM p -> Ok (aux 0 p)
 
-  let build_ast expr : (ast, Error.t list) result =
-    let ast = NODE (expr, LEAF, LEAF) in
-    Ok ast
+  let build_ast stmts : (ast, Error.t list) result = Ok (PROGRAM stmts)
 end
 
 module Parser = struct
@@ -64,6 +89,9 @@ module Parser = struct
     | t :: _ -> Error [ parse_error t msg ]
     | [] -> Error [ parse_error (Token.make_eof_token ()) msg ]
 
+  let expect_statement tokens =
+    expect_token SEMICOLON tokens "Expected ';' at the end of a statement"
+
   let parse_binary_left_assoc_expression operand_parser operator_types tokens :
       (expr * Token.token list, Error.t list) result =
     operand_parser tokens >>= fun (left, rest) ->
@@ -77,7 +105,63 @@ module Parser = struct
     loop left rest
 
   (* Main parsing functions *)
-  let rec expression tokens : (expr * Token.token list, Error.t list) result =
+  let rec program (tokens : Token.token list) :
+      (Statement.stmt list, Error.t list) result =
+    let rec parse_stmt acc (tkns : Token.token list) =
+      if tkns = [] then
+        Error [ parse_error (Token.make_eof_token ()) "Unexpected end of input" ]
+      else if (List.hd tkns).ttype = EOF then
+        Ok (List.rev acc)
+      else
+        declaration tkns >>= fun (stmt, rest) -> parse_stmt (stmt :: acc) rest
+    in
+    parse_stmt [] tokens
+
+  and declaration = function
+    | { ttype = VAR; _ } :: rest -> var_declaration rest
+    | _ as tokens -> statement tokens
+
+  and var_declaration = function
+    | ({ ttype = IDENTIFIER; _ } as id) :: { ttype = EQUAL; _ } :: rest ->
+        expression rest >>= fun (expr, rest') ->
+        expect_statement rest' >>= fun (_, rest'') ->
+        Ok (Statement.VAR_DEF (id, Some expr), rest'')
+    | ({ ttype = IDENTIFIER; _ } as id) :: { ttype = SEMICOLON; _ } :: rest ->
+        Ok (VAR_DEF (id, None), rest)
+    | { ttype = IDENTIFIER; _ } :: t :: _rest ->
+        Error
+          [
+            parse_error t
+              ("Expected '=' in variable declaration but found " ^ t.lexeme);
+          ]
+    | t :: _ ->
+        Error
+          [
+            parse_error t
+              ("Expected identifier in variable declaration but found " ^ t.lexeme);
+          ]
+    | [] ->
+        Error
+          [
+            parse_error (Token.make_eof_token ())
+              "Expected identifier in variable declaration but found nothing";
+          ]
+
+  and statement = function
+    | { ttype = PRINT; _ } :: rest -> print_statement rest
+    | _ as tokens -> expression_statement tokens
+
+  and print_statement (tokens : Token.token list) :
+      (Statement.stmt * Token.token list, Error.t list) result =
+    expression tokens >>= fun (expr, rest) ->
+    expect_statement rest >>= fun (_, rest') -> Ok (Statement.PRNT expr, rest')
+
+  and expression_statement (tokens : Token.token list) :
+      (Statement.stmt * Token.token list, Error.t list) result =
+    expression tokens >>= fun (expr, rest) ->
+    expect_statement rest >>= fun (_, rest') -> Ok (Statement.EXPR expr, rest')
+
+  and expression tokens : (expr * Token.token list, Error.t list) result =
     equality tokens
 
   (* TODO: introduce abstraction to parse a binary left assoc expression *)
@@ -115,6 +199,9 @@ module Parser = struct
     | ({ ttype = TRUE | FALSE; _ } as t) :: rest ->
         let lit = if t.ttype = TRUE then true else false in
         Ok (LITERAL (L_BOOL lit), rest)
+    | ({ ttype = IDENTIFIER; _ } as t) :: rest ->
+        let lit = if t.ttype = TRUE then true else false in
+        Ok (LITERAL (L_BOOL lit), rest)
     | { ttype = LEFT_PAR; _ } :: rest ->
         expression rest >>= fun (expr, rest') ->
         expect_token Token.RIGHT_PAR rest' "Expect ')' after expression"
@@ -131,15 +218,5 @@ module Parser = struct
           ]
     | [] -> Error [ parse_error (Token.make_eof_token ()) "Expect expression" ]
 
-  let parse tokens : (expr, Error.t list) result =
-    match expression tokens with
-    | Ok (expr, [ { ttype = EOF; _ } ]) -> Ok expr
-    | Ok (_, remaining) ->
-        let remaining_token = List.hd remaining in
-        Error
-          [
-            parse_error remaining_token
-              ("Unexpected token after expression: " ^ remaining_token.lexeme);
-          ]
-    | Error errors -> Error errors
+  let parse tokens : (Statement.stmt list, Error.t list) result = program tokens
 end

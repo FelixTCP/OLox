@@ -1,12 +1,8 @@
 module Interpreter = struct
   open Parser
   open Lexer
-
-  type lox_value =
-    | LOX_BOOL of bool
-    | LOX_STR of string
-    | LOX_NUM of float
-    | LOX_NIL
+  open Value
+  open Environment
 
   let ( >>= ) result f =
     match result with
@@ -15,29 +11,16 @@ module Interpreter = struct
 
   let runtime_error (token : Token.token) msg = Error.RuntimeError (token.line, msg)
 
-  let is_truthy expr =
-    match expr with
-    | LOX_NIL -> false
-    | LOX_BOOL b -> b
-    | _ -> true
-
-  let is_equal left right =
-    match left, right with
-    | LOX_NUM l, LOX_NUM r -> l = r
-    | LOX_STR l, LOX_STR r -> String.equal l r
-    | LOX_BOOL l, LOX_BOOL r -> Bool.equal l r
-    | LOX_NIL, LOX_NIL -> true
-    | _, _ -> false
-
-  let eval_unary_expr (op : Token.token) value : (lox_value, Error.t list) result =
+  let eval_unary_expr (op : Token.token) value :
+      (Value.lox_value, Error.t list) result =
     match op.ttype, value with
-    | MINUS, LOX_NUM n -> Ok (LOX_NUM (-.n))
+    | MINUS, Value.LOX_NUM n -> Ok (LOX_NUM (-.n))
     | MINUS, _ -> Error [ runtime_error op "Operand must be a number" ]
-    | BANG, value -> Ok (LOX_BOOL (not (is_truthy value)))
+    | BANG, value -> Ok (LOX_BOOL (not (Value.is_truthy value)))
     | _ -> Error [ runtime_error op "Unknown unary operator" ]
 
-  let eval_binary_expr (left_val : lox_value) (op : Token.token)
-      (right_val : lox_value) : (lox_value, Error.t list) result =
+  let eval_binary_expr (left_val : Value.lox_value) (op : Token.token)
+      (right_val : Value.lox_value) : (Value.lox_value, Error.t list) result =
     match left_val, op.ttype, right_val with
     | LOX_NUM l, PLUS, LOX_NUM r -> Ok (LOX_NUM (l +. r))
     | LOX_NUM l, MINUS, LOX_NUM r -> Ok (LOX_NUM (l -. r))
@@ -63,10 +46,11 @@ module Interpreter = struct
         Error [ runtime_error op "Right operand must be a number" ]
     | _, (GREATER | GREATER_EQUAL | LESS | LESS_EQUAL), _ ->
         Error [ runtime_error op "Left operand must be a number" ]
-    | _, EQUAL_EQUAL, _ -> Ok (LOX_BOOL (is_equal left_val right_val))
+    | _, EQUAL_EQUAL, _ -> Ok (LOX_BOOL (Value.is_equal left_val right_val))
     | _ -> Error [ runtime_error op "Unknown binary operator" ]
 
-  let rec eval_expr (expr : Expression.expr) : (lox_value, Error.t list) result =
+  let rec eval_expr env (expr : Expression.expr) :
+      (Value.lox_value, Error.t list) result =
     match expr with
     | Expression.LITERAL lit -> (
         match lit with
@@ -75,23 +59,44 @@ module Interpreter = struct
         | L_NUM f -> Ok (LOX_NUM f)
         | L_NIL -> Ok LOX_NIL
       )
-    | Expression.GROUPING e -> eval_expr e
+    | Expression.GROUPING e -> eval_expr env e
     | Expression.UNARY (op, e) ->
-        eval_expr e >>= fun value -> eval_unary_expr op value
+        eval_expr env e >>= fun value -> eval_unary_expr op value
     | Expression.BINARY (l, op, r) ->
-        eval_expr l >>= fun l_value ->
-        eval_expr r >>= fun r_value -> eval_binary_expr l_value op r_value
+        eval_expr env l >>= fun l_value ->
+        eval_expr env r >>= fun r_value -> eval_binary_expr l_value op r_value
+    | Expression.VARIABLE v -> (
+        let name = v.lexeme in
+        match Environment.get env name with
+        | None -> Error [ runtime_error v ("Could not find variable named " ^ name) ]
+        | Some value -> Ok value
+      )
 
-  let interpret_ast (ast : AST.ast) : (lox_value, Error.t list) result =
+  let eval env stmt =
+    match stmt with
+    | Statement.PRNT expr ->
+        eval_expr env expr >>= fun value ->
+        print_endline (Value.stringify_result value) ;
+        Ok Value.LOX_NIL
+    | Statement.EXPR expr -> eval_expr env expr
+    | Statement.VAR_DEF (v, None) ->
+        let name = v.lexeme in
+        Environment.define env name Value.LOX_NIL ;
+        Ok LOX_NIL
+    | Statement.VAR_DEF (v, Some expr) ->
+        let name = v.lexeme in
+        eval_expr env expr >>= fun value ->
+        Environment.define env name value ;
+        Ok Value.LOX_NIL
+
+  let interpret_ast (ast : AST.ast) : (Value.lox_value, Error.t list) result =
+    let env = Environment.create () in
     match ast with
-    | NODE (expr, _, _) -> eval_expr expr
-    | _ ->
-        Error
-          [ runtime_error (Token.make_eof_token ()) "Expected valid syntax-tree" ]
-
-  let stringify_result = function
-    | LOX_BOOL b -> string_of_bool b
-    | LOX_STR s -> s
-    | LOX_NUM n -> string_of_float n
-    | LOX_NIL -> "nil"
+    | AST.PROGRAM statements ->
+        let rec aux = function
+          | [] -> Ok Value.LOX_NIL
+          | [ stmt ] -> eval env stmt
+          | stmt :: rest -> eval env stmt >>= fun _ -> aux rest
+        in
+        aux statements
 end

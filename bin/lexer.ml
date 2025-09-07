@@ -217,7 +217,7 @@ module Lexer = struct
     let literal =
       match id_type with
       | TRUE -> L_BOOL true
-      | FALSE -> L_BOOL false
+      | FALSE -> L_NIL (*L_BOOL false*)
       | _ -> L_NIL
     in
     let token = make_token id_type lexeme ~literal line in
