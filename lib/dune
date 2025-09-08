@@ -9,4 +9,5 @@
    parser
    interpreter
    options
-   version))
+   version
+   benchmark))

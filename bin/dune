@@ -2,3 +2,9 @@
  (public_name olox)
  (name main)
  (libraries olox))
+
+(executable
+ (public_name benchmark-olox)
+ (name benchmark) 
+ (modules benchmark)
+ (libraries olox))

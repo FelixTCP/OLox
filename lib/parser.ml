@@ -5,6 +5,7 @@ module Expression = struct
     | BINARY of expr * Lexer.Token.token * expr
     | GROUPING of expr
     | VARIABLE of Lexer.Token.token
+    | ASSIGN of Lexer.Token.token * expr
 end
 
 module Statement = struct
@@ -12,6 +13,7 @@ module Statement = struct
     | EXPR of Expression.expr
     | PRNT of Expression.expr
     | VAR_DEF of Lexer.Token.token * Expression.expr option
+    | BLOCK of stmt list
 end
 
 module AST = struct
@@ -42,6 +44,9 @@ module AST = struct
           let sub_expr_str = expr_to_string (indent + 1) sub_expr in
           fmt "%sGrouping:\n%s" indent_str sub_expr_str
       | VARIABLE name -> fmt "%sVariable: %s\n" indent_str name.lexeme
+      | ASSIGN (name, value) ->
+          let value_str = expr_to_string (indent + 1) value in
+          fmt "%sAssign: %s\n%s" indent_str name.lexeme value_str
     in
     let rec aux indent (ast : Statement.stmt list) =
       ast
@@ -60,6 +65,9 @@ module AST = struct
                    let expr_str = expr_to_string (indent + 1) expr in
                    Printf.sprintf "%sVar Initilazation: %s\n%s" indent_str id.lexeme
                      expr_str
+               | Statement.BLOCK stmts ->
+                   let block_str = aux (indent + 1) stmts in
+                   Printf.sprintf "%sBlock:\n%s" indent_str block_str
              in
              acc ^ stmt_str
            )
@@ -90,7 +98,10 @@ module Parser = struct
     | [] -> Error [ parse_error (Token.make_eof_token ()) msg ]
 
   let expect_statement tokens =
-    expect_token SEMICOLON tokens "Expected ';' at the end of a statement"
+    expect_token SEMICOLON tokens
+      (Printf.sprintf "Expected ';' after `%s` to end the statement"
+         (List.hd tokens).lexeme
+      )
 
   let parse_binary_left_assoc_expression operand_parser operator_types tokens :
       (expr * Token.token list, Error.t list) result =
@@ -149,6 +160,8 @@ module Parser = struct
 
   and statement = function
     | { ttype = PRINT; _ } :: rest -> print_statement rest
+    | { ttype = LEFT_BRA; _ } :: rest ->
+        block rest >>= fun (stmts, rest') -> Ok (Statement.BLOCK stmts, rest')
     | _ as tokens -> expression_statement tokens
 
   and print_statement (tokens : Token.token list) :
@@ -161,10 +174,32 @@ module Parser = struct
     expression tokens >>= fun (expr, rest) ->
     expect_statement rest >>= fun (_, rest') -> Ok (Statement.EXPR expr, rest')
 
-  and expression tokens : (expr * Token.token list, Error.t list) result =
-    equality tokens
+  and block (tokens : Token.token list) :
+      (Statement.stmt list * Token.token list, Error.t list) result =
+    let rec parse_block acc (tkns : Token.token list) =
+      match tkns with
+      | [] ->
+          Error
+            [
+              parse_error (Token.make_eof_token ())
+                "Unterminated block. Expected '}' before end of input.";
+            ]
+      | { ttype = RIGHT_BRA; _ } :: rest -> Ok (List.rev acc, rest)
+      | _ -> declaration tkns >>= fun (stmt, rest) -> parse_block (stmt :: acc) rest
+    in
+    parse_block [] tokens
 
-  (* TODO: introduce abstraction to parse a binary left assoc expression *)
+  and expression tokens : (expr * Token.token list, Error.t list) result =
+    assignment tokens
+
+  and assignment tokens : (expr * Token.token list, Error.t list) result =
+    match tokens with
+    | { ttype = IDENTIFIER; _ } :: { ttype = EQUAL; _ } :: rest ->
+        let var_token = List.hd tokens in
+        assignment rest >>= fun (value, rest') ->
+        Ok (ASSIGN (var_token, value), rest')
+    | _ -> equality tokens
+
   and equality tokens : (expr * Token.token list, Error.t list) result =
     parse_binary_left_assoc_expression comparison [ BANG_EQUAL; EQUAL_EQUAL ] tokens
 

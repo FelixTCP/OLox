@@ -69,8 +69,21 @@ module Interpreter = struct
         | None -> Error [ runtime_error v ("Could not find variable named " ^ name) ]
         | Some value -> Ok value
       )
+    | Expression.ASSIGN (v, e) -> (
+        let name = v.lexeme in
+        eval_expr env e >>= fun value ->
+        match Environment.assign env name value with
+        | None ->
+            Error
+              [
+                runtime_error v ("Could not assign to unknown variable named " ^ name);
+              ]
+        | Some value -> Ok value
+      )
 
-  let eval env stmt =
+  type interpreter_result = VALUE of Value.lox_value | NO_VALUE
+
+  let rec eval env stmt =
     match stmt with
     | Statement.PRNT expr ->
         eval_expr env expr >>= fun value ->
@@ -86,8 +99,13 @@ module Interpreter = struct
         eval_expr env expr >>= fun value ->
         Environment.define env name value ;
         Ok Value.LOX_NIL
-
-  type interpreter_result = VALUE of Value.lox_value | NO_VALUE
+    | Statement.BLOCK stmts ->
+        let block_env = Environment.push_scope env in
+        let rec exec_block = function
+          | [] -> Ok Value.LOX_NIL
+          | s :: rest -> eval block_env s >>= fun _ -> exec_block rest
+        in
+        exec_block stmts
 
   let interpret_ast (env : Environment.t) (ast : AST.ast) :
       (interpreter_result, Error.t list) result =

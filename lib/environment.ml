@@ -1,7 +1,30 @@
-open Value
+type t = (string, Value.lox_value) Hashtbl.t list
 
-type t = (string, lox_value) Hashtbl.t
+let create () = [ Hashtbl.create 16 ]
+let push_scope env = Hashtbl.create 16 :: env
 
-let create () = Hashtbl.create 16
-let define env name value = Hashtbl.replace env name value
-let get env name = try Some (Hashtbl.find env name) with Not_found -> None
+let define env name value =
+  match env with
+  | [] -> failwith "Empty environment"
+  | current :: _rest -> Hashtbl.replace current name value
+
+let rec get env name =
+  match env with
+  | [] -> None
+  | scope :: rest -> (
+      match Hashtbl.find_opt scope name with
+      | Some value -> Some value
+      | None -> get rest name
+    )
+
+let assign env name value =
+  let rec aux = function
+    | [] -> None
+    | scope :: rest ->
+        if Hashtbl.mem scope name then (
+          Hashtbl.replace scope name value ;
+          Some value
+        ) else
+          aux rest
+  in
+  aux env
