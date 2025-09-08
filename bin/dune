@@ -1,5 +1,10 @@
 (executable
  (public_name olox)
  (name main)
- (modules main error lexer parser interpreter)
+ (libraries olox))
+
+(executable
+ (public_name benchmark-olox)
+ (name benchmark) 
+ (modules benchmark)
  (libraries olox))

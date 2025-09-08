@@ -1,2 +1,13 @@
 (library
- (name olox))
+ (public_name olox)
+ (name olox)
+ (modules 
+   error
+   value  
+   environment
+   lexer
+   parser
+   interpreter
+   options
+   version
+   benchmark))

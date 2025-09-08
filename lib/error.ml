@@ -7,9 +7,7 @@ let corpus line label msg =
   let light_grey = "\x1b[37m" in
   let red = "\x1b[31m" in
   let reset = "\x1b[0m" in
-  Printf.sprintf "%s%d | " light_grey line
-  ^ Printf.sprintf "%s%s:%s " red label reset
-  ^ Printf.sprintf "%s" msg
+  Printf.sprintf "%s%d | %s%s:%s %s" light_grey line red label reset msg
 
 let to_string = function
   | ScanError (line, msg) -> corpus line "ScanError" msg
