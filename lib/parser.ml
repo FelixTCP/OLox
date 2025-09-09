@@ -59,10 +59,10 @@ module AST = struct
       | CALL (callee, args) ->
           let callee_str = expr_to_string (indent + 1) callee in
           let args_str =
-            args |> List.map (expr_to_string (indent + 1)) |> String.concat ""
+            args |> List.map (expr_to_string (indent + 2)) |> String.concat ""
           in
-          fmt "%sCall:\n%s  Callee:\n  %s%s  Arguments:\n  %s\n" indent_str
-            indent_str callee_str indent_str args_str
+          fmt "%sCall:\n%s  Callee:\n  %s%s  Arguments:\n%s" indent_str indent_str
+            callee_str indent_str args_str
     in
     let rec aux indent (ast : Statement.stmt list) =
       ast
@@ -348,16 +348,22 @@ module Parser = struct
               parse_error (Token.make_eof_token ())
                 "Unterminated argument list. Expected ')' before end of input";
             ]
-      | _ ->
+      | _ -> (
           expression tkns >>= fun (arg, rest) ->
-          if List.length acc > 255 then
-            Error
-              [
-                parse_error (List.hd tkns)
-                  "Cannot have more than 255 arguments in a function call";
-              ]
-          else
-            parse_args (arg :: acc) rest
+          match rest with
+          | { ttype = RIGHT_PAR; _ } :: rest -> Ok (List.rev (arg :: acc), rest)
+          | _ ->
+              expect_token Token.COMMA rest "Expected ',' between arguments"
+              >>= fun (_, rest') ->
+              if List.length acc > 255 then
+                Error
+                  [
+                    parse_error (List.hd tkns)
+                      "Cannot have more than 255 arguments in a function call";
+                  ]
+              else
+                parse_args (arg :: acc) rest'
+        )
     in
     parse_args [] tokens
 

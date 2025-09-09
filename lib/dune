@@ -4,6 +4,7 @@
  (modules 
    error
    value  
+   callable
    environment
    lexer
    parser
