@@ -135,6 +135,21 @@ module Interpreter = struct
             Ok Value.LOX_NIL
         in
         loop ()
+    | Statement.FOR (init, cond, incr, body) ->
+        let for_env = Environment.push_scope env in
+        eval for_env init >>= fun _ ->
+        let condition =
+          match cond with
+          | None -> Expression.LITERAL (L_BOOL true)
+          | Some c -> c
+        in
+        let increment =
+          match incr with
+          | None -> Statement.EXPR (Expression.LITERAL (L_BOOL true))
+          | Some i -> Statement.EXPR i
+        in
+        eval for_env
+          (Statement.WHILE (condition, Statement.BLOCK [ body; increment ]))
 
   let interpret_ast (env : Environment.t) (ast : AST.ast) :
       (interpreter_result, Error.t list) result =

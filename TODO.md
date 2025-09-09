@@ -10,6 +10,7 @@ A list of features to be implemented in the language interpreter further down th
 - [ ] **Ternary Operator**: A concise way to perform conditional expressions, e.g., `condition ? expr1 : expr2`.
 - [ ] **Implicit Type Conversion**: Automatic conversion between types (e.g., string to number) during operations.
 - [ ] **Runtime Error: Variable access before assignment**: Throw an error if a variable is accessed before it has been assigned a value (no implicit nil).
+- [ ] **Introduce break and continue statements**: Add support for `break` and `continue` statements to control loop execution.
 
 ### Optional Language Features (Nice to Have)
 
@@ -17,3 +18,4 @@ A list of features to be implemented in the language interpreter further down th
 - [ ] **Increment/Decrement Operators**: Support for `++` and `--` operators to increase or decrease a variable's value by one.
 - [ ] **Arithmetic Assignment Operators**: Implement operators like `+=`, `-=`, `*=`, and `/=` for shorthand arithmetic operations.
 - [ ] **Typesafe Equality Operators**: Implement `===` and `!==` for strict equality checks without type coercion.
+- [ ] **Ternary Operator**: Implement the ternary conditional operator `? :` for concise conditional expressions.

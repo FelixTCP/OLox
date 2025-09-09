@@ -17,6 +17,7 @@ module Statement = struct
     | BLOCK of stmt list
     | IF of Expression.expr * stmt * stmt option
     | WHILE of Expression.expr * stmt
+    | FOR of stmt * Expression.expr option * Expression.expr option * stmt
 end
 
 module AST = struct
@@ -92,6 +93,27 @@ module AST = struct
                    let body_str = aux (indent + 1) [ body ] in
                    Printf.sprintf "%sWhile Statement:\n%s  Condition: \n  %s%s"
                      indent_str indent_str cond_str body_str
+               | Statement.FOR (init, cond, incr, body) ->
+                   let init_str = aux (indent + 1) [ init ] in
+                   let cond_str =
+                     match cond with
+                     | None -> "[NO CONDITION]"
+                     | Some c -> expr_to_string (indent + 1) c
+                   in
+                   let incr_str =
+                     match incr with
+                     | None -> "[NO INCREMENT]"
+                     | Some i -> expr_to_string (indent + 1) i
+                   in
+                   let body_str = aux (indent + 1) [ body ] in
+                   Printf.sprintf
+                     "%sFor Statement:\n\
+                      %s  Init: \n\
+                     \  %s%s  Condition: \n\
+                     \  %s%s  Increment: \n\
+                     \  %s%s"
+                     indent_str indent_str init_str indent_str cond_str indent_str
+                     incr_str body_str
              in
              acc ^ stmt_str
            )
@@ -191,6 +213,7 @@ module Parser = struct
         block rest >>= fun (stmts, rest') -> Ok (Statement.BLOCK stmts, rest')
     | { ttype = IF; _ } :: rest -> if_statement rest
     | { ttype = WHILE; _ } :: rest -> while_statement rest
+    | { ttype = FOR; _ } :: rest -> for_statement rest
     | _ as tokens -> expression_statement tokens
 
   and print_statement (tokens : Token.token list) :
@@ -255,6 +278,56 @@ module Parser = struct
           [
             parse_error (Token.make_eof_token ())
               "Expected '(' after while-statement but reached EOF";
+          ]
+
+  and for_statement (tokens : Token.token list) :
+      (Statement.stmt * Token.token list, Error.t list) result =
+    let parse_statement init cond incr (tokens : Token.token list) =
+      expect_token RIGHT_PAR tokens "Expected ')' after while condition"
+      >>= fun (_, rest) ->
+      statement rest >>= fun (stmt, rest') ->
+      Ok (Statement.FOR (init, cond, incr, stmt), rest')
+    in
+    let parse_increment init cond (tokens : Token.token list) =
+      match tokens with
+      | { ttype = SEMICOLON; _ } :: rest ->
+          let incr = None in
+          parse_statement init cond incr rest
+      | _ ->
+          expression tokens >>= fun (incr_expr, rest) ->
+          let incr = Some incr_expr in
+          parse_statement init cond incr rest
+    in
+    let parse_condition init (tokens : Token.token list) =
+      match tokens with
+      | { ttype = SEMICOLON; _ } :: rest ->
+          let cond = None in
+          parse_increment init cond rest
+      | _ ->
+          expression tokens >>= fun (cond_expr, rest) ->
+          expect_statement rest >>= fun (_, rest') ->
+          let cond = Some cond_expr in
+          parse_increment init cond rest'
+    in
+    match tokens with
+    | { ttype = LEFT_PAR; _ } :: rest -> (
+        match rest with
+        | { ttype = SEMICOLON; _ } :: rest' ->
+            let init = Statement.EXPR (LITERAL L_NIL) in
+            parse_condition init rest'
+        | { ttype = VAR; _ } :: rest' ->
+            var_declaration rest' >>= fun (init, rest'') ->
+            parse_condition init rest''
+        | _ ->
+            expression_statement rest >>= fun (init, rest') ->
+            parse_condition init rest'
+      )
+    | t :: _ -> Error [ parse_error t "Expected '(' after for-statement" ]
+    | [] ->
+        Error
+          [
+            parse_error (Token.make_eof_token ())
+              "Expected '(' after for-statement but reached EOF";
           ]
 
   and expression tokens : (expr * Token.token list, Error.t list) result =
