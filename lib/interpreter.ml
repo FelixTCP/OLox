@@ -45,7 +45,15 @@ module Interpreter = struct
     | _, (GREATER | GREATER_EQUAL | LESS | LESS_EQUAL), _ ->
         Error [ runtime_error op "Left operand must be a number" ]
     | _, EQUAL_EQUAL, _ -> Ok (LOX_BOOL (Value.is_equal left_val right_val))
+    | _, BANG_EQUAL, _ -> Ok (LOX_BOOL (not (Value.is_equal left_val right_val)))
     | _ -> Error [ runtime_error op "Unknown binary operator" ]
+
+  let eval_locial_expr (left_val : Value.lox_value) (op : Token.token)
+      (right_val : Value.lox_value) : (Value.lox_value, Error.t list) result =
+    match op.ttype with
+    | AND -> Ok (if not (Value.is_truthy left_val) then left_val else right_val)
+    | OR -> Ok (if Value.is_truthy left_val then left_val else right_val)
+    | _ -> Error [ runtime_error op "Unknowlogical operator" ]
 
   let rec eval_expr env (expr : Expression.expr) :
       (Value.lox_value, Error.t list) result =
@@ -80,6 +88,9 @@ module Interpreter = struct
               ]
         | Some value -> Ok value
       )
+    | Expression.LOGICAL (l, op, r) ->
+        eval_expr env l >>= fun l_value ->
+        eval_expr env r >>= fun r_value -> eval_locial_expr l_value op r_value
 
   type interpreter_result = VALUE of Value.lox_value | NO_VALUE
 
@@ -106,6 +117,24 @@ module Interpreter = struct
           | s :: rest -> eval block_env s >>= fun _ -> exec_block rest
         in
         exec_block stmts
+    | Statement.IF (cond, then_branch, else_branch) -> (
+        eval_expr env cond >>= fun condition ->
+        if Value.is_truthy condition then
+          eval env then_branch
+        else
+          match else_branch with
+          | None -> Ok Value.LOX_NIL
+          | Some else_stmt -> eval env else_stmt
+      )
+    | Statement.WHILE (cond, body) ->
+        let rec loop () =
+          eval_expr env cond >>= fun condition ->
+          if Value.is_truthy condition then
+            eval env body >>= fun _ -> loop ()
+          else
+            Ok Value.LOX_NIL
+        in
+        loop ()
 
   let interpret_ast (env : Environment.t) (ast : AST.ast) :
       (interpreter_result, Error.t list) result =

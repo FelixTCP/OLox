@@ -1,5 +1,19 @@
-var a = 1;
-{
-  var a = a + 2;
-  print a;
+//var foo = "test"; print foo;
+
+//var bool = (122.0 + 2) * 3 != 2.789; // comment
+
+//if (bool == true or foo) {
+   //print "BigBrother";
+//} else {
+   //print "SmallBrother";
+//}
+
+var i = 3;
+
+while (i >= 0) {
+  if(i == 2) print "Zwo";
+  else print i;
+  i = i - 1;
 }
+
+print "Wir sind turing complete!";

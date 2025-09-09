@@ -3,6 +3,7 @@ module Expression = struct
     | LITERAL of Lexer.Token.literal_type
     | UNARY of Lexer.Token.token * expr
     | BINARY of expr * Lexer.Token.token * expr
+    | LOGICAL of expr * Lexer.Token.token * expr
     | GROUPING of expr
     | VARIABLE of Lexer.Token.token
     | ASSIGN of Lexer.Token.token * expr
@@ -14,6 +15,8 @@ module Statement = struct
     | PRNT of Expression.expr
     | VAR_DEF of Lexer.Token.token * Expression.expr option
     | BLOCK of stmt list
+    | IF of Expression.expr * stmt * stmt option
+    | WHILE of Expression.expr * stmt
 end
 
 module AST = struct
@@ -40,6 +43,10 @@ module AST = struct
           let left_str = expr_to_string (indent + 1) l_expr in
           let right_str = expr_to_string (indent + 1) r_expr in
           fmt "%sBinary: %s\n%s%s" indent_str op.lexeme left_str right_str
+      | LOGICAL (l_expr, op, r_expr) ->
+          let left_str = expr_to_string (indent + 1) l_expr in
+          let right_str = expr_to_string (indent + 1) r_expr in
+          fmt "%sLogical: %s\n%s%s" indent_str op.lexeme left_str right_str
       | GROUPING sub_expr ->
           let sub_expr_str = expr_to_string (indent + 1) sub_expr in
           fmt "%sGrouping:\n%s" indent_str sub_expr_str
@@ -68,6 +75,23 @@ module AST = struct
                | Statement.BLOCK stmts ->
                    let block_str = aux (indent + 1) stmts in
                    Printf.sprintf "%sBlock:\n%s" indent_str block_str
+               | Statement.IF (cond, then_branch, else_branch) ->
+                   let cond_str = expr_to_string (indent + 1) cond in
+                   let then_str = aux (indent + 1) [ then_branch ] in
+                   let else_str =
+                     match else_branch with
+                     | None -> ""
+                     | Some e ->
+                         Printf.sprintf "%sElse Statement:\n%s" indent_str
+                           (aux (indent + 1) [ e ])
+                   in
+                   Printf.sprintf "%sIf Statement:\n%s  Condition: \n  %s%s%s"
+                     indent_str indent_str cond_str then_str else_str
+               | Statement.WHILE (cond, body) ->
+                   let cond_str = expr_to_string (indent + 1) cond in
+                   let body_str = aux (indent + 1) [ body ] in
+                   Printf.sprintf "%sWhile Statement:\n%s  Condition: \n  %s%s"
+                     indent_str indent_str cond_str body_str
              in
              acc ^ stmt_str
            )
@@ -103,14 +127,17 @@ module Parser = struct
          (List.hd tokens).lexeme
       )
 
-  let parse_binary_left_assoc_expression operand_parser operator_types tokens :
-      (expr * Token.token list, Error.t list) result =
+  let parse_binary_left_assoc_expression operand_parser operator_types
+      ?(logical = false) tokens : (expr * Token.token list, Error.t list) result =
     operand_parser tokens >>= fun (left, rest) ->
     let rec loop l tkns : (expr * Token.token list, Error.t list) result =
       match (tkns : Token.token list) with
       | ({ ttype; _ } as t) :: rest' when List.mem ttype operator_types ->
           operand_parser rest' >>= fun (right, rest'') ->
-          loop (BINARY (l, t, right)) rest''
+          if logical then
+            loop (LOGICAL (l, t, right)) rest''
+          else
+            loop (BINARY (l, t, right)) rest''
       | _ -> Ok (l, tkns)
     in
     loop left rest
@@ -162,6 +189,8 @@ module Parser = struct
     | { ttype = PRINT; _ } :: rest -> print_statement rest
     | { ttype = LEFT_BRA; _ } :: rest ->
         block rest >>= fun (stmts, rest') -> Ok (Statement.BLOCK stmts, rest')
+    | { ttype = IF; _ } :: rest -> if_statement rest
+    | { ttype = WHILE; _ } :: rest -> while_statement rest
     | _ as tokens -> expression_statement tokens
 
   and print_statement (tokens : Token.token list) :
@@ -189,6 +218,45 @@ module Parser = struct
     in
     parse_block [] tokens
 
+  and if_statement (tokens : Token.token list) :
+      (Statement.stmt * Token.token list, Error.t list) result =
+    match tokens with
+    | { ttype = LEFT_PAR; _ } :: rest -> (
+        expression rest >>= fun (condition, rest') ->
+        expect_token RIGHT_PAR rest' "Expected ')' after if condition"
+        >>= fun (_, rest'') ->
+        statement rest'' >>= fun (then_branch, rest''') ->
+        match rest''' with
+        | { ttype = ELSE; _ } :: rest4 ->
+            statement rest4 >>= fun (else_branch, rest5) ->
+            Ok (Statement.IF (condition, then_branch, Some else_branch), rest5)
+        | _ -> Ok (Statement.IF (condition, then_branch, None), rest''')
+      )
+    | t :: _ -> Error [ parse_error t "Expected '(' after if-statement" ]
+    | [] ->
+        Error
+          [
+            parse_error (Token.make_eof_token ())
+              "Expected '(' after if-statement but reached EOF";
+          ]
+
+  and while_statement (tokens : Token.token list) :
+      (Statement.stmt * Token.token list, Error.t list) result =
+    match tokens with
+    | { ttype = LEFT_PAR; _ } :: rest ->
+        expression rest >>= fun (condition, rest') ->
+        expect_token RIGHT_PAR rest' "Expected ')' after while condition"
+        >>= fun (_, rest'') ->
+        statement rest'' >>= fun (stmt, rest''') ->
+        Ok (Statement.WHILE (condition, stmt), rest''')
+    | t :: _ -> Error [ parse_error t "Expected '(' after while-statement" ]
+    | [] ->
+        Error
+          [
+            parse_error (Token.make_eof_token ())
+              "Expected '(' after while-statement but reached EOF";
+          ]
+
   and expression tokens : (expr * Token.token list, Error.t list) result =
     assignment tokens
 
@@ -198,7 +266,13 @@ module Parser = struct
         let var_token = List.hd tokens in
         assignment rest >>= fun (value, rest') ->
         Ok (ASSIGN (var_token, value), rest')
-    | _ -> equality tokens
+    | _ -> logic_or tokens
+
+  and logic_or tokens : (expr * Token.token list, Error.t list) result =
+    parse_binary_left_assoc_expression logic_and [ OR ] tokens ~logical:true
+
+  and logic_and tokens : (expr * Token.token list, Error.t list) result =
+    parse_binary_left_assoc_expression equality [ AND ] tokens ~logical:true
 
   and equality tokens : (expr * Token.token list, Error.t list) result =
     parse_binary_left_assoc_expression comparison [ BANG_EQUAL; EQUAL_EQUAL ] tokens
