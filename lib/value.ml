@@ -3,7 +3,9 @@ type lox_value =
   | LOX_STR of string
   | LOX_NUM of float
   | LOX_NIL
-  | LOX_CALLABLE of int
+  | LOX_CALLABLE of lox_callable
+
+and lox_callable = { name : string; arity : int; call : lox_value list -> lox_value }
 
 let stringify_type = function
   | LOX_BOOL _ -> "bool"
@@ -17,7 +19,7 @@ let stringify_result = function
   | LOX_STR s -> s
   | LOX_NUM n -> string_of_float n
   | LOX_NIL -> "nil"
-  | LOX_CALLABLE id -> "<fn " ^ string_of_int id ^ ">"
+  | LOX_CALLABLE c -> "<fn " ^ c.name ^ ">"
 
 let is_truthy expr =
   match expr with
@@ -34,3 +36,14 @@ let is_equal left right =
   (* TODO: Implement function equality if needed *)
   (* | LOX_CALLABLE l, LOX_CALLABLE r -> l = r *)
   | _, _ -> false
+
+module Callable = struct
+  let clock_function =
+    { name = "clock"; arity = 0; call = (fun _ -> LOX_NUM (Sys.time ())) }
+
+  let native_functions = [ clock_function ]
+
+  (* Return list of (name, value) pairs instead of calling Environment.define *)
+  let get_native_bindings () =
+    native_functions |> List.map (fun f -> f.name, LOX_CALLABLE f)
+end

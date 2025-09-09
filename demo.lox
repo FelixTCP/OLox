@@ -1,17 +1,19 @@
-//var foo = "test"; print foo;
-
-//var bool = (122.0 + 2) * 3 != 2.789; // comment
-
-//if (bool == true or foo) {
-   //print "BigBrother";
-//} else {
-   //print "SmallBrother";
-//}
-
-var a = 0;
-var temp;
-
-for (var b = 1; a < 10000; b = temp + b) 
-  print a;
-
-print "Wir sind turing complete!";
+for (var n = 1; n <= 10; n = n + 1) {
+  var start = clock();
+  
+  // Calculate n!
+  var factorial = 1;
+  for (var i = 1; i <= n; i = i + 1) {
+    factorial = factorial * i;
+  }
+  
+  // Do 'factorial' amount of work
+  var work = 0;
+  for (var j = 1; j <= factorial; j = j + 1) {
+    work = work + j * j;
+  }
+  
+  var time = clock() - start;
+  print n;
+  print time; 
+}

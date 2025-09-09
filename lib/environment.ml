@@ -1,6 +1,5 @@
 type t = (string, Value.lox_value) Hashtbl.t list
 
-let create () = [ Hashtbl.create 16 ]
 let push_scope env = Hashtbl.create 16 :: env
 
 let define env name value =
@@ -28,3 +27,9 @@ let assign env name value =
           aux rest
   in
   aux env
+
+let create () =
+  let env = [ Hashtbl.create 16 ] in
+  Value.Callable.get_native_bindings ()
+  |> List.iter (fun (name, value) -> define env name value) ;
+  env

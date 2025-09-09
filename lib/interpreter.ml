@@ -100,8 +100,38 @@ module Interpreter = struct
     | Expression.LOGICAL (l, op, r) ->
         eval_expr env l >>= fun l_value ->
         eval_expr env r >>= fun r_value -> eval_locial_expr l_value op r_value
-    | Expression.CALL _ ->
-        Error [ Error.RuntimeError (0, "Function calls not supported") ]
+    | Expression.CALL (c, a) -> (
+        eval_expr env c >>= fun func ->
+        match func with
+        | Value.LOX_CALLABLE callable ->
+            if callable.arity <> List.length a then
+              Error
+                [
+                  runtime_error (Token.make_eof_token ())
+                    (Printf.sprintf "Expected %d arguments but got %d" callable.arity
+                       (List.length a)
+                    );
+                ]
+            else
+              let rec eval_args args =
+                match args with
+                | [] -> Ok []
+                | expr :: rest ->
+                    eval_expr env expr >>= fun value ->
+                    eval_args rest >>= fun values -> Ok (value :: values)
+              in
+              eval_args a >>= fun arg_values ->
+              Ok (callable.call (List.rev arg_values))
+        | o ->
+            Error
+              [
+                Error.RuntimeError
+                  ( 0,
+                    Printf.sprintf "Function calls not supported for `%s` of type %s"
+                      (Value.stringify_result o) (Value.stringify_type o)
+                  );
+              ]
+      )
 
   type interpreter_result = VALUE of Value.lox_value | NO_VALUE
 
