@@ -1,5 +1,11 @@
 type lox_value = LOX_BOOL of bool | LOX_STR of string | LOX_NUM of float | LOX_NIL
 
+let stringify_type = function
+  | LOX_BOOL _ -> "bool"
+  | LOX_STR _ -> "string"
+  | LOX_NUM _ -> "number"
+  | LOX_NIL -> "nil"
+
 let stringify_result = function
   | LOX_BOOL b -> string_of_bool b
   | LOX_STR s -> s

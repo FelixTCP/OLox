@@ -34,16 +34,25 @@ module Interpreter = struct
         Error [ runtime_error op "Left operand must be a number" ]
     | LOX_STR l, PLUS, LOX_STR r -> Ok (LOX_STR (String.cat l r))
     | LOX_STR _, PLUS, _ ->
-        Error [ runtime_error op "Right operand must be a string" ]
-    | _, PLUS, _ -> Error [ runtime_error op "Left operand must be a string" ]
+        Error [ runtime_error op "Right operand on concat must be a string" ]
+    | l, PLUS, _ ->
+        Error
+          [
+            runtime_error op
+              (Printf.sprintf
+                 "Left operand on '+' must be a Value of type number or string but \
+                  was `%s` of type %s"
+                 (Value.stringify_result l) (Value.stringify_type l)
+              );
+          ]
     | LOX_NUM l, GREATER, LOX_NUM r -> Ok (LOX_BOOL (l > r))
     | LOX_NUM l, GREATER_EQUAL, LOX_NUM r -> Ok (LOX_BOOL (l >= r))
     | LOX_NUM l, LESS, LOX_NUM r -> Ok (LOX_BOOL (l < r))
     | LOX_NUM l, LESS_EQUAL, LOX_NUM r -> Ok (LOX_BOOL (l <= r))
     | LOX_NUM _, (GREATER | GREATER_EQUAL | LESS | LESS_EQUAL), _ ->
-        Error [ runtime_error op "Right operand must be a number" ]
+        Error [ runtime_error op "Right operand on comparison must be a number" ]
     | _, (GREATER | GREATER_EQUAL | LESS | LESS_EQUAL), _ ->
-        Error [ runtime_error op "Left operand must be a number" ]
+        Error [ runtime_error op "Left operand on comparison must be a number" ]
     | _, EQUAL_EQUAL, _ -> Ok (LOX_BOOL (Value.is_equal left_val right_val))
     | _, BANG_EQUAL, _ -> Ok (LOX_BOOL (not (Value.is_equal left_val right_val)))
     | _ -> Error [ runtime_error op "Unknown binary operator" ]
@@ -91,6 +100,8 @@ module Interpreter = struct
     | Expression.LOGICAL (l, op, r) ->
         eval_expr env l >>= fun l_value ->
         eval_expr env r >>= fun r_value -> eval_locial_expr l_value op r_value
+    | Expression.CALL _ ->
+        Error [ Error.RuntimeError (0, "Function calls not supported") ]
 
   type interpreter_result = VALUE of Value.lox_value | NO_VALUE
 

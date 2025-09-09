@@ -19,3 +19,4 @@ A list of features to be implemented in the language interpreter further down th
 - [ ] **Arithmetic Assignment Operators**: Implement operators like `+=`, `-=`, `*=`, and `/=` for shorthand arithmetic operations.
 - [ ] **Typesafe Equality Operators**: Implement `===` and `!==` for strict equality checks without type coercion.
 - [ ] **Ternary Operator**: Implement the ternary conditional operator `? :` for concise conditional expressions.
+- [ ] **Better Error Messages**: Improve error messages to be more descriptive and user-friendly.

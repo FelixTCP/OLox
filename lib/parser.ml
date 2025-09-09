@@ -7,6 +7,7 @@ module Expression = struct
     | GROUPING of expr
     | VARIABLE of Lexer.Token.token
     | ASSIGN of Lexer.Token.token * expr
+    | CALL of expr * expr list
 end
 
 module Statement = struct
@@ -55,6 +56,13 @@ module AST = struct
       | ASSIGN (name, value) ->
           let value_str = expr_to_string (indent + 1) value in
           fmt "%sAssign: %s\n%s" indent_str name.lexeme value_str
+      | CALL (callee, args) ->
+          let callee_str = expr_to_string (indent + 1) callee in
+          let args_str =
+            args |> List.map (expr_to_string (indent + 1)) |> String.concat ""
+          in
+          fmt "%sCall:\n%s  Callee:\n  %s%s  Arguments:\n  %s\n" indent_str
+            indent_str callee_str indent_str args_str
     in
     let rec aux indent (ast : Statement.stmt list) =
       ast
@@ -283,7 +291,7 @@ module Parser = struct
   and for_statement (tokens : Token.token list) :
       (Statement.stmt * Token.token list, Error.t list) result =
     let parse_statement init cond incr (tokens : Token.token list) =
-      expect_token RIGHT_PAR tokens "Expected ')' after while condition"
+      expect_token RIGHT_PAR tokens "Expected ')' after for condition"
       >>= fun (_, rest) ->
       statement rest >>= fun (stmt, rest') ->
       Ok (Statement.FOR (init, cond, incr, stmt), rest')
@@ -330,6 +338,29 @@ module Parser = struct
               "Expected '(' after for-statement but reached EOF";
           ]
 
+  and arguments tokens : (expr list * Token.token list, Error.t list) result =
+    let rec parse_args acc (tkns : Token.token list) =
+      match tkns with
+      | { ttype = RIGHT_PAR; _ } :: rest -> Ok (List.rev acc, rest)
+      | [] ->
+          Error
+            [
+              parse_error (Token.make_eof_token ())
+                "Unterminated argument list. Expected ')' before end of input";
+            ]
+      | _ ->
+          expression tkns >>= fun (arg, rest) ->
+          if List.length acc > 255 then
+            Error
+              [
+                parse_error (List.hd tkns)
+                  "Cannot have more than 255 arguments in a function call";
+              ]
+          else
+            parse_args (arg :: acc) rest
+    in
+    parse_args [] tokens
+
   and expression tokens : (expr * Token.token list, Error.t list) result =
     assignment tokens
 
@@ -365,7 +396,14 @@ module Parser = struct
     match tokens with
     | ({ ttype = BANG | MINUS; _ } as t) :: rest ->
         unary rest >>= fun (expr, rest') -> Ok (UNARY (t, expr), rest')
-    | _ -> primary tokens
+    | _ -> call tokens
+
+  and call tokens : (expr * Token.token list, Error.t list) result =
+    primary tokens >>= fun (expr, rest) ->
+    match rest with
+    | { ttype = LEFT_PAR; _ } :: rest' ->
+        arguments rest' >>= fun (args, rest'') -> Ok (CALL (expr, args), rest'')
+    | _ -> Ok (expr, rest)
 
   and primary tokens : (expr * Token.token list, Error.t list) result =
     match tokens with
