@@ -1,19 +1,36 @@
-for (var n = 1; n <= 10; n = n + 1) {
-  var start = clock();
-  
-  // Calculate n!
-  var factorial = 1;
-  for (var i = 1; i <= n; i = i + 1) {
-    factorial = factorial * i;
-  }
-  
-  // Do 'factorial' amount of work
-  var work = 0;
-  for (var j = 1; j <= factorial; j = j + 1) {
-    work = work + j * j;
-  }
-  
-  var time = clock() - start;
-  print n;
-  print time; 
+var MAX = 37;
+
+fun fib(n) {
+  if (n <= 1) return n;
+  return fib(n - 2) + fib(n - 1);
 }
+
+fun fib_dynamic(n) {
+  var a;
+  var b;
+  var tmp;
+  for (var i = 1; i < n; i = i + 1) {
+    if (i == 1) {
+      a = 1;
+      b = 0;
+    }else {
+      tmp = a;
+      a = tmp + b;
+      b = tmp;
+    }
+    print a;
+  }
+}
+
+var start = clock();
+for (var i = 0; i < MAX; i = i + 1) {
+  print fib(i);
+}
+var stop = clock();
+
+print (stop - start);
+
+var start = clock();
+fib_dynamic(MAX);
+var stop = clock();
+print (stop - start);

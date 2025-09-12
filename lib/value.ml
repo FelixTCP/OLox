@@ -4,8 +4,13 @@ type lox_value =
   | LOX_NUM of float
   | LOX_NIL
   | LOX_CALLABLE of lox_callable
+  | LOX_VOID (* Return type for callables that do not return anything *)
 
-and lox_callable = { name : string; arity : int; call : lox_value list -> lox_value }
+and lox_callable = {
+  name : string;
+  arity : int;
+  call : lox_value list -> (lox_value, Error.t list) result;
+}
 
 let stringify_type = function
   | LOX_BOOL _ -> "bool"
@@ -13,13 +18,19 @@ let stringify_type = function
   | LOX_NUM _ -> "number"
   | LOX_NIL -> "nil"
   | LOX_CALLABLE _ -> "callable"
+  | LOX_VOID -> "void"
 
 let stringify_result = function
   | LOX_BOOL b -> string_of_bool b
   | LOX_STR s -> s
-  | LOX_NUM n -> string_of_float n
+  | LOX_NUM n ->
+      if Float.is_integer n then
+        string_of_int (Float.to_int n)
+      else
+        string_of_float n
   | LOX_NIL -> "nil"
   | LOX_CALLABLE c -> "<fn " ^ c.name ^ ">"
+  | LOX_VOID -> "void"
 
 let is_truthy expr =
   match expr with
@@ -33,13 +44,14 @@ let is_equal left right =
   | LOX_STR l, LOX_STR r -> String.equal l r
   | LOX_BOOL l, LOX_BOOL r -> Bool.equal l r
   | LOX_NIL, LOX_NIL -> true
+  | LOX_VOID, LOX_VOID -> true
   (* TODO: Implement function equality if needed *)
   (* | LOX_CALLABLE l, LOX_CALLABLE r -> l = r *)
   | _, _ -> false
 
 module Callable = struct
   let clock_function =
-    { name = "clock"; arity = 0; call = (fun _ -> LOX_NUM (Sys.time ())) }
+    { name = "clock"; arity = 0; call = (fun _ -> Ok (LOX_NUM (Sys.time ()))) }
 
   let native_functions = [ clock_function ]
 

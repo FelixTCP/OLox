@@ -18,8 +18,8 @@ let print_tokens (result : Token.token list) =
 let print_ast result = print_endline result
 
 let print_result = function
-  | Interpreter.VALUE result -> result |> Value.stringify_result |> print_endline
-  | Interpreter.NO_VALUE -> ()
+  | Value.LOX_VOID -> ()
+  | other -> other |> Value.stringify_result |> print_endline
 
 let ( >>= ) result f =
   match result with
@@ -70,7 +70,7 @@ let run_file ?(runner = run) filename =
   let file = In_channel.with_open_bin filename In_channel.input_all in
   runner file
 
-let exit_prompt () = print_endline "Thanks for running olox!"
+let exit_prompt () = print_endline "\n\nThanks for running olox!"
 
 let start_repl () =
   let ver = Version.version in

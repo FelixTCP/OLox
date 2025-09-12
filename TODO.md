@@ -11,6 +11,7 @@ A list of features to be implemented in the language interpreter further down th
 - [ ] **Implicit Type Conversion**: Automatic conversion between types (e.g., string to number) during operations.
 - [ ] **Runtime Error: Variable access before assignment**: Throw an error if a variable is accessed before it has been assigned a value (no implicit nil).
 - [ ] **Introduce break and continue statements**: Add support for `break` and `continue` statements to control loop execution.
+- [ ] **Add lambda functions**: Support for anonymous functions (lambdas) for more functional programming styles.
 
 ### Optional Language Features (Nice to Have)
 
@@ -20,3 +21,4 @@ A list of features to be implemented in the language interpreter further down th
 - [ ] **Typesafe Equality Operators**: Implement `===` and `!==` for strict equality checks without type coercion.
 - [ ] **Ternary Operator**: Implement the ternary conditional operator `? :` for concise conditional expressions.
 - [ ] **Better Error Messages**: Improve error messages to be more descriptive and user-friendly.
+- [ ] **Add Array and Tuple support**: Implement array and tuple data structures for more complex data handling.

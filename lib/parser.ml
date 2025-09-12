@@ -19,6 +19,8 @@ module Statement = struct
     | IF of Expression.expr * stmt * stmt option
     | WHILE of Expression.expr * stmt
     | FOR of stmt * Expression.expr option * Expression.expr option * stmt
+    | FUN_DEF of Lexer.Token.token * Lexer.Token.token list * stmt list
+    | RETURN of Expression.expr
 end
 
 module AST = struct
@@ -122,6 +124,25 @@ module AST = struct
                      \  %s%s"
                      indent_str indent_str init_str indent_str cond_str indent_str
                      incr_str body_str
+               | Statement.FUN_DEF (name, params, body) ->
+                   let params_str =
+                     if params = [] then
+                       "No parameters"
+                     else
+                       params
+                       |> List.map (fun (p : Lexer.Token.token) -> p.lexeme)
+                       |> String.concat ", "
+                   in
+                   let body_str = aux (indent + 1) body in
+                   Printf.sprintf
+                     "%sFunction Declaration: %s\n\
+                      %s  Parameters: (%s)\n\
+                      %s  Body:\n\
+                     \  %s"
+                     indent_str name.lexeme indent_str params_str indent_str body_str
+               | Statement.RETURN expr ->
+                   let expr_str = expr_to_string (indent + 1) expr in
+                   Printf.sprintf "%sReturn Statement:\n%s" indent_str expr_str
              in
              acc ^ stmt_str
            )
@@ -187,6 +208,7 @@ module Parser = struct
 
   and declaration = function
     | { ttype = VAR; _ } :: rest -> var_declaration rest
+    | { ttype = FUN; _ } :: rest -> fun_declaration rest
     | _ as tokens -> statement tokens
 
   and var_declaration = function
@@ -215,6 +237,69 @@ module Parser = struct
               "Expected identifier in variable declaration but found nothing";
           ]
 
+  and fun_declaration (tokens : Token.token list) =
+    func tokens >>= fun (function_stmt, rest) -> Ok (function_stmt, rest)
+
+  and func = function
+    | ({ ttype = IDENTIFIER; _ } as id) :: { ttype = LEFT_PAR; _ } :: rest ->
+        parameters rest >>= fun (params, rest') ->
+        expect_token LEFT_BRA rest' "Expected '{' after parameter list"
+        >>= fun (_, rest'') ->
+        block rest'' >>= fun (body, rest''') ->
+        Ok (Statement.FUN_DEF (id, params, body), rest''')
+    | { ttype = IDENTIFIER; _ } :: other :: _ ->
+        Error
+          [
+            parse_error other
+              "Expected '(' to start parameter list afer identifier in function \
+               declaration";
+          ]
+    | t :: _ ->
+        Error
+          [ parse_error t "Expected identifier after 'fun' in function declaration" ]
+    | [] ->
+        Error
+          [
+            parse_error (Token.make_eof_token ())
+              "Expected identifier after 'fun' in function declaration but found EOF";
+          ]
+
+  and parameters tokens : (Token.token list * Token.token list, Error.t list) result
+      =
+    let rec parse_params acc (tkns : Token.token list) =
+      if List.length acc > 255 then
+        Error
+          [
+            parse_error (List.hd tkns)
+              "Cannot have more than 255 parameters in a function declaration";
+          ]
+      else
+        match tkns with
+        | { ttype = RIGHT_PAR; _ } :: rest -> Ok (List.rev acc, rest)
+        | ({ ttype = IDENTIFIER; _ } as t) :: { ttype = RIGHT_PAR; _ } :: rest ->
+            Ok (List.rev (t :: acc), rest)
+        | ({ ttype = IDENTIFIER; _ } as t) :: rest ->
+            expect_token COMMA rest "Expected ',' between parameters"
+            >>= fun (_, rest') -> parse_params (t :: acc) rest'
+        | t :: _ ->
+            Error
+              [
+                parse_error t
+                  (Printf.sprintf
+                     "Expected Unterminated parameter list. Expected ')' but found \
+                      ` `."
+                  ^ t.lexeme
+                  );
+              ]
+        | [] ->
+            Error
+              [
+                parse_error (Token.make_eof_token ())
+                  "Unterminated parameter list. Expected ')' but found EOF";
+              ]
+    in
+    parse_params [] tokens
+
   and statement = function
     | { ttype = PRINT; _ } :: rest -> print_statement rest
     | { ttype = LEFT_BRA; _ } :: rest ->
@@ -222,6 +307,7 @@ module Parser = struct
     | { ttype = IF; _ } :: rest -> if_statement rest
     | { ttype = WHILE; _ } :: rest -> while_statement rest
     | { ttype = FOR; _ } :: rest -> for_statement rest
+    | { ttype = RETURN; _ } :: rest -> return_statement rest
     | _ as tokens -> expression_statement tokens
 
   and print_statement (tokens : Token.token list) :
@@ -248,6 +334,11 @@ module Parser = struct
       | _ -> declaration tkns >>= fun (stmt, rest) -> parse_block (stmt :: acc) rest
     in
     parse_block [] tokens
+
+  and return_statement (tokens : Token.token list) :
+      (Statement.stmt * Token.token list, Error.t list) result =
+    expression tokens >>= fun (expr, rest) ->
+    expect_statement rest >>= fun (_, rest') -> Ok (Statement.RETURN expr, rest')
 
   and if_statement (tokens : Token.token list) :
       (Statement.stmt * Token.token list, Error.t list) result =

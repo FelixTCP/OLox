@@ -57,7 +57,7 @@ module Interpreter = struct
     | _, BANG_EQUAL, _ -> Ok (LOX_BOOL (not (Value.is_equal left_val right_val)))
     | _ -> Error [ runtime_error op "Unknown binary operator" ]
 
-  let eval_locial_expr (left_val : Value.lox_value) (op : Token.token)
+  let eval_logical_expr (left_val : Value.lox_value) (op : Token.token)
       (right_val : Value.lox_value) : (Value.lox_value, Error.t list) result =
     match op.ttype with
     | AND -> Ok (if not (Value.is_truthy left_val) then left_val else right_val)
@@ -99,7 +99,7 @@ module Interpreter = struct
       )
     | Expression.LOGICAL (l, op, r) ->
         eval_expr env l >>= fun l_value ->
-        eval_expr env r >>= fun r_value -> eval_locial_expr l_value op r_value
+        eval_expr env r >>= fun r_value -> eval_logical_expr l_value op r_value
     | Expression.CALL (c, a) -> (
         eval_expr env c >>= fun func ->
         match func with
@@ -120,8 +120,7 @@ module Interpreter = struct
                     eval_expr env expr >>= fun value ->
                     eval_args rest >>= fun values -> Ok (value :: values)
               in
-              eval_args a >>= fun arg_values ->
-              Ok (callable.call (List.rev arg_values))
+              eval_args a >>= fun arg_values -> callable.call (List.rev arg_values)
         | o ->
             Error
               [
@@ -133,47 +132,48 @@ module Interpreter = struct
               ]
       )
 
-  type interpreter_result = VALUE of Value.lox_value | NO_VALUE
+  type control_flow = RETURN of Value.lox_value | NEXT
 
-  let rec eval env stmt =
+  let ( >>? ) result f =
+    result >>= function
+    | NEXT -> f ()
+    | RETURN v -> Ok (RETURN v)
+
+  let rec eval env stmt : (control_flow, Error.t list) result =
     match stmt with
     | Statement.PRNT expr ->
         eval_expr env expr >>= fun value ->
         print_endline (Value.stringify_result value) ;
-        Ok Value.LOX_NIL
-    | Statement.EXPR expr -> eval_expr env expr
+        Ok NEXT
+    | Statement.EXPR expr -> eval_expr env expr >>= fun _ -> Ok NEXT
     | Statement.VAR_DEF (v, None) ->
         let name = v.lexeme in
         Environment.define env name Value.LOX_NIL ;
-        Ok LOX_NIL
+        Ok NEXT
     | Statement.VAR_DEF (v, Some expr) ->
         let name = v.lexeme in
         eval_expr env expr >>= fun value ->
         Environment.define env name value ;
-        Ok Value.LOX_NIL
+        Ok NEXT
     | Statement.BLOCK stmts ->
         let block_env = Environment.push_scope env in
-        let rec exec_block = function
-          | [] -> Ok Value.LOX_NIL
-          | s :: rest -> eval block_env s >>= fun _ -> exec_block rest
-        in
-        exec_block stmts
+        eval_block block_env stmts
     | Statement.IF (cond, then_branch, else_branch) -> (
         eval_expr env cond >>= fun condition ->
         if Value.is_truthy condition then
-          eval env then_branch
+          eval env then_branch >>? fun () -> Ok NEXT
         else
           match else_branch with
-          | None -> Ok Value.LOX_NIL
-          | Some else_stmt -> eval env else_stmt
+          | None -> Ok NEXT
+          | Some else_stmt -> eval env else_stmt >>? fun () -> Ok NEXT
       )
     | Statement.WHILE (cond, body) ->
         let rec loop () =
           eval_expr env cond >>= fun condition ->
           if Value.is_truthy condition then
-            eval env body >>= fun _ -> loop ()
+            eval env body >>? fun () -> loop ()
           else
-            Ok Value.LOX_NIL
+            Ok NEXT
         in
         loop ()
     | Statement.FOR (init, cond, incr, body) ->
@@ -191,12 +191,40 @@ module Interpreter = struct
         in
         eval for_env
           (Statement.WHILE (condition, Statement.BLOCK [ body; increment ]))
+    | Statement.FUN_DEF (name, params, body) ->
+        let func : Value.lox_callable =
+          {
+            name = name.lexeme;
+            arity = List.length params;
+            call =
+              (fun args ->
+                let func_env = Environment.push_scope env in
+                List.iter2
+                  (fun (param : Token.token) arg ->
+                    Environment.define func_env param.lexeme arg
+                  )
+                  params args ;
+                eval func_env (Statement.BLOCK body) >>= function
+                | NEXT -> Ok Value.LOX_VOID
+                | RETURN v -> Ok v
+              );
+          }
+        in
+        let fn = Value.LOX_CALLABLE func in
+        Environment.define env name.lexeme fn ;
+        Ok (RETURN fn)
+    | Statement.RETURN expr -> eval_expr env expr >>= fun v -> Ok (RETURN v)
+
+  and eval_block env = function
+    | [] -> Ok NEXT
+    | [ stmt ] -> eval env stmt
+    | stmt :: rest -> eval env stmt >>? fun () -> eval_block env rest
 
   let interpret_ast (env : Environment.t) (ast : AST.ast) :
-      (interpreter_result, Error.t list) result =
+      (Value.lox_value, Error.t list) result =
     let rec execute_statements = function
-      | [] -> Ok NO_VALUE
-      | [ Statement.EXPR expr ] -> eval_expr env expr >>= fun v -> Ok (VALUE v)
+      | [] -> Ok Value.LOX_VOID
+      | [ Statement.EXPR expr ] -> eval_expr env expr
       | stmt :: rest -> eval env stmt >>= fun _ -> execute_statements rest
     in
     match ast with
