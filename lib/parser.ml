@@ -10,6 +10,33 @@ module Expression = struct
     | CALL of expr * expr list
 end
 
+module Resolution = struct
+  type resolution_info = { locals : (Expression.expr, int) Hashtbl.t }
+
+  let current_resolution = ref None
+  let create () = { locals = Hashtbl.create 32 }
+
+  let init () =
+    let info = create () in
+    current_resolution := Some info ;
+    info
+
+  let get_current () =
+    match !current_resolution with
+    | Some info -> info
+    | None -> failwith "Resolution not initialized"
+
+  let resolve expr depth =
+    let info = get_current () in
+    Hashtbl.replace info.locals expr depth
+
+  let lookup expr =
+    let info = get_current () in
+    Hashtbl.find_opt info.locals expr
+
+  let get_resolution_info () = get_current ()
+end
+
 module Statement = struct
   type stmt =
     | EXPR of Expression.expr
@@ -26,9 +53,31 @@ end
 module AST = struct
   open Expression
 
-  type ast = PROGRAM of Statement.stmt list
+  type ast = PROGRAM of Statement.stmt list * Resolution.resolution_info
 
   let to_string (ast : ast) : (string, Error.t list) result =
+    let res_info_to_string (res_info : Resolution.resolution_info) : string =
+      let entries = Hashtbl.fold (fun k v acc -> (k, v) :: acc) res_info.locals [] in
+      let entry_strings =
+        List.map
+          (fun (expr, depth) ->
+            Printf.sprintf "Expr: %s at depth %d"
+              ( match expr with
+              | LITERAL _ -> "LITERAL"
+              | UNARY _ -> "UNARY"
+              | BINARY _ -> "BINARY"
+              | LOGICAL _ -> "LOGICAL"
+              | GROUPING _ -> "GROUPING"
+              | VARIABLE t -> Printf.sprintf "VARIABLE(%s)" t.lexeme
+              | ASSIGN (t, _) -> Printf.sprintf "ASSIGN(%s)" t.lexeme
+              | CALL _ -> "CALL"
+              )
+              depth
+          )
+          entries
+      in
+      String.concat "\n" entry_strings
+    in
     let rec expr_to_string indent expr =
       let fmt = Printf.sprintf in
       let indent_str = String.make (indent * 2) ' ' in
@@ -66,8 +115,8 @@ module AST = struct
           fmt "%sCall:\n%s  Callee:\n  %s%s  Arguments:\n%s" indent_str indent_str
             callee_str indent_str args_str
     in
-    let rec aux indent (ast : Statement.stmt list) =
-      ast
+    let rec aux indent (stmts : Statement.stmt list) =
+      stmts
       |> List.fold_left
            (fun acc stmt ->
              let indent_str = String.make (indent * 2) ' ' in
@@ -149,16 +198,55 @@ module AST = struct
            ""
     in
     match ast with
-    | PROGRAM p -> Ok (aux 0 p)
+    | PROGRAM (p, r) ->
+        Ok
+          (aux 0 p ^ "\nResolution Info (WARN - currently buggy!):\n"
+         ^ res_info_to_string r
+          )
 
-  let build_ast stmts : (ast, Error.t list) result = Ok (PROGRAM stmts)
+  let build_ast ast : (ast, Error.t list) result =
+    let stmts, res_info = ast in
+    Ok (PROGRAM (stmts, res_info))
 end
 
 module Parser = struct
   open Lexer
   open Expression
 
-  (* Helper functions *)
+  (* Resolver Helper Functions *)
+  type scope = { variables : (string, unit) Hashtbl.t; level : int }
+
+  let scopes = ref (Stack.create ())
+
+  let begin_scope () =
+    let new_level = (Stack.top !scopes).level + 1 in
+    let new_scope = { variables = Hashtbl.create 32; level = new_level } in
+    Stack.push new_scope !scopes
+
+  let end_scope () = ignore (Stack.pop !scopes)
+
+  let resolve_var name expr =
+    let scope_list = Stack.fold (fun acc s -> s :: acc) [] !scopes |> List.rev in
+    let rec find_var scopes depth =
+      match scopes with
+      | [] -> ()
+      | scope :: rest ->
+          if Hashtbl.mem scope.variables name then
+            Resolution.resolve expr depth
+          else
+            find_var rest (depth - 1)
+    in
+    find_var scope_list (List.length scope_list - 1)
+
+  let new_var name =
+    let current_scope = Stack.top !scopes in
+    (* TODO: decide, whether redeclaration inside the same scope should be allowed *)
+    (* if Hashtbl.mem current_scope.variables name then *)
+    (*   Printf.eprintf *)
+    (*     "Warning: Variable `%s` already declared in this scope. Overwriting.\n" name *)
+    Hashtbl.replace current_scope.variables name ()
+
+  (* Parser Helper functions *)
   let parse_error (token : Token.token) msg = Error.ParseError (token.line, msg)
 
   let ( >>= ) result f =
@@ -215,8 +303,10 @@ module Parser = struct
     | ({ ttype = IDENTIFIER; _ } as id) :: { ttype = EQUAL; _ } :: rest ->
         expression rest >>= fun (expr, rest') ->
         expect_statement rest' >>= fun (_, rest'') ->
+        new_var id.lexeme ;
         Ok (Statement.VAR_DEF (id, Some expr), rest'')
     | ({ ttype = IDENTIFIER; _ } as id) :: { ttype = SEMICOLON; _ } :: rest ->
+        new_var id.lexeme ;
         Ok (VAR_DEF (id, None), rest)
     | { ttype = IDENTIFIER; _ } :: t :: _rest ->
         Error
@@ -246,6 +336,7 @@ module Parser = struct
         expect_token LEFT_BRA rest' "Expected '{' after parameter list"
         >>= fun (_, rest'') ->
         block rest'' >>= fun (body, rest''') ->
+        new_var id.lexeme ;
         Ok (Statement.FUN_DEF (id, params, body), rest''')
     | { ttype = IDENTIFIER; _ } :: other :: _ ->
         Error
@@ -330,9 +421,12 @@ module Parser = struct
               parse_error (Token.make_eof_token ())
                 "Unterminated block. Expected '}' before end of input.";
             ]
-      | { ttype = RIGHT_BRA; _ } :: rest -> Ok (List.rev acc, rest)
+      | { ttype = RIGHT_BRA; _ } :: rest ->
+          end_scope () ;
+          Ok (List.rev acc, rest)
       | _ -> declaration tkns >>= fun (stmt, rest) -> parse_block (stmt :: acc) rest
     in
+    begin_scope () ;
     parse_block [] tokens
 
   and return_statement (tokens : Token.token list) :
@@ -466,6 +560,9 @@ module Parser = struct
     | { ttype = IDENTIFIER; _ } :: { ttype = EQUAL; _ } :: rest ->
         let var_token = List.hd tokens in
         assignment rest >>= fun (value, rest') ->
+        print_endline
+          (Printf.sprintf "Resolving assignment to variable `%s`" var_token.lexeme) ;
+        resolve_var var_token.lexeme (VARIABLE var_token) ;
         Ok (ASSIGN (var_token, value), rest')
     | _ -> logic_or tokens
 
@@ -516,7 +613,9 @@ module Parser = struct
     | ({ ttype = TRUE | FALSE; _ } as t) :: rest ->
         let lit = if t.ttype = TRUE then true else false in
         Ok (LITERAL (L_BOOL lit), rest)
-    | ({ ttype = IDENTIFIER; _ } as t) :: rest -> Ok (VARIABLE t, rest)
+    | ({ ttype = IDENTIFIER; _ } as t) :: rest ->
+        resolve_var t.lexeme (VARIABLE t) ;
+        Ok (VARIABLE t, rest)
     | { ttype = LEFT_PAR; _ } :: rest ->
         expression rest >>= fun (expr, rest') ->
         expect_token Token.RIGHT_PAR rest' "Expect ')' after expression"
@@ -533,5 +632,10 @@ module Parser = struct
           ]
     | [] -> Error [ parse_error (Token.make_eof_token ()) "Expect expression" ]
 
-  let parse tokens : (Statement.stmt list, Error.t list) result = program tokens
+  let parse tokens :
+      (Statement.stmt list * Resolution.resolution_info, Error.t list) result =
+    let _ = Resolution.init () in
+    scopes := Stack.create () ;
+    Stack.push { variables = Hashtbl.create 32; level = 0 } !scopes ;
+    program tokens >>= fun stmts -> Ok (stmts, Resolution.get_resolution_info ())
 end

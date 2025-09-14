@@ -82,7 +82,12 @@ module Interpreter = struct
         eval_expr env r >>= fun r_value -> eval_binary_expr l_value op r_value
     | Expression.VARIABLE v -> (
         let name = v.lexeme in
-        match Environment.get env name with
+        let depth =
+          match Resolution.lookup expr with
+          | None -> 0
+          | Some d -> d
+        in
+        match Environment.get env depth name with
         | None -> Error [ runtime_error v ("Could not find variable named " ^ name) ]
         | Some value -> Ok value
       )
@@ -139,7 +144,8 @@ module Interpreter = struct
     | NEXT -> f ()
     | RETURN v -> Ok (RETURN v)
 
-  let rec eval env stmt : (control_flow, Error.t list) result =
+  let rec eval env (res : Resolution.resolution_info) stmt :
+      (control_flow, Error.t list) result =
     match stmt with
     | Statement.PRNT expr ->
         eval_expr env expr >>= fun value ->
@@ -157,28 +163,28 @@ module Interpreter = struct
         Ok NEXT
     | Statement.BLOCK stmts ->
         let block_env = Environment.push_scope env in
-        eval_block block_env stmts
+        eval_block block_env res stmts
     | Statement.IF (cond, then_branch, else_branch) -> (
         eval_expr env cond >>= fun condition ->
         if Value.is_truthy condition then
-          eval env then_branch >>? fun () -> Ok NEXT
+          eval env res then_branch >>? fun () -> Ok NEXT
         else
           match else_branch with
           | None -> Ok NEXT
-          | Some else_stmt -> eval env else_stmt >>? fun () -> Ok NEXT
+          | Some else_stmt -> eval env res else_stmt >>? fun () -> Ok NEXT
       )
     | Statement.WHILE (cond, body) ->
         let rec loop () =
           eval_expr env cond >>= fun condition ->
           if Value.is_truthy condition then
-            eval env body >>? fun () -> loop ()
+            eval env res body >>? fun () -> loop ()
           else
             Ok NEXT
         in
         loop ()
     | Statement.FOR (init, cond, incr, body) ->
         let for_env = Environment.push_scope env in
-        eval for_env init >>= fun _ ->
+        eval for_env res init >>= fun _ ->
         let condition =
           match cond with
           | None -> Expression.LITERAL (L_BOOL true)
@@ -189,7 +195,7 @@ module Interpreter = struct
           | None -> Statement.EXPR (Expression.LITERAL (L_BOOL true))
           | Some i -> Statement.EXPR i
         in
-        eval for_env
+        eval for_env res
           (Statement.WHILE (condition, Statement.BLOCK [ body; increment ]))
     | Statement.FUN_DEF (name, params, body) ->
         let func : Value.lox_callable =
@@ -204,7 +210,7 @@ module Interpreter = struct
                     Environment.define func_env param.lexeme arg
                   )
                   params args ;
-                eval func_env (Statement.BLOCK body) >>= function
+                eval func_env res (Statement.BLOCK body) >>= function
                 | NEXT -> Ok Value.LOX_VOID
                 | RETURN v -> Ok v
               );
@@ -212,21 +218,21 @@ module Interpreter = struct
         in
         let fn = Value.LOX_CALLABLE func in
         Environment.define env name.lexeme fn ;
-        Ok (RETURN fn)
+        Ok NEXT
     | Statement.RETURN expr -> eval_expr env expr >>= fun v -> Ok (RETURN v)
 
-  and eval_block env = function
+  and eval_block env res = function
     | [] -> Ok NEXT
-    | [ stmt ] -> eval env stmt
-    | stmt :: rest -> eval env stmt >>? fun () -> eval_block env rest
+    | [ stmt ] -> eval env res stmt
+    | stmt :: rest -> eval env res stmt >>? fun () -> eval_block env res rest
 
   let interpret_ast (env : Environment.t) (ast : AST.ast) :
       (Value.lox_value, Error.t list) result =
-    let rec execute_statements = function
+    let rec execute_statements res = function
       | [] -> Ok Value.LOX_VOID
       | [ Statement.EXPR expr ] -> eval_expr env expr
-      | stmt :: rest -> eval env stmt >>= fun _ -> execute_statements rest
+      | stmt :: rest -> eval env res stmt >>= fun _ -> execute_statements res rest
     in
     match ast with
-    | AST.PROGRAM statements -> execute_statements statements
+    | AST.PROGRAM (stmts, res) -> execute_statements res stmts
 end

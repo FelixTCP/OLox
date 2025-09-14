@@ -5,16 +5,20 @@ let push_scope env = Hashtbl.create 16 :: env
 let define env name value =
   match env with
   | [] -> failwith "Empty environment"
-  | current :: _rest -> Hashtbl.replace current name value
+  | current :: _ -> Hashtbl.replace current name value
 
-let rec get env name =
-  match env with
-  | [] -> None
-  | scope :: rest -> (
-      match Hashtbl.find_opt scope name with
-      | Some value -> Some value
-      | None -> get rest name
-    )
+let get env depth name =
+  let rec aux remaining_env =
+    let current_depth = List.length remaining_env - 1 in
+    match remaining_env with
+    | [] -> None
+    | scope :: rest ->
+        if current_depth = depth then
+          Hashtbl.find_opt scope name
+        else
+          aux rest
+  in
+  aux env
 
 let assign env name value =
   let rec aux = function
