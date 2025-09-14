@@ -1,6 +1,6 @@
 module Interpreter = struct
-  open Parser
   open Lexer
+  open Parser
 
   let ( >>= ) result f =
     match result with
@@ -226,7 +226,7 @@ module Interpreter = struct
     | [ stmt ] -> eval env res stmt
     | stmt :: rest -> eval env res stmt >>? fun () -> eval_block env res rest
 
-  let interpret_ast (env : Environment.t) (ast : AST.ast) :
+  let interpret_ast (env : Environment.t) (ast : Ast.ast) :
       (Value.lox_value, Error.t list) result =
     let rec execute_statements res = function
       | [] -> Ok Value.LOX_VOID
@@ -234,5 +234,5 @@ module Interpreter = struct
       | stmt :: rest -> eval env res stmt >>= fun _ -> execute_statements res rest
     in
     match ast with
-    | AST.PROGRAM (stmts, res) -> execute_statements res stmts
+    | Ast.PROGRAM (stmts, res) -> execute_statements res stmts
 end

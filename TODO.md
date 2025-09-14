@@ -12,6 +12,7 @@ A list of features to be implemented in the language interpreter further down th
 - [ ] **Runtime Error: Variable access before assignment**: Throw an error if a variable is accessed before it has been assigned a value (no implicit nil).
 - [ ] **Introduce break and continue statements**: Add support for `break` and `continue` statements to control loop execution.
 - [ ] **Add lambda functions**: Support for anonymous functions (lambdas) for more functional programming styles.
+- [ ] **Add better resolver errors**: Improve error messages related to variable resolution for better debugging (self-reference, top-level return, unused variables, etc).
 
 ### Optional Language Features (Nice to Have)
 
