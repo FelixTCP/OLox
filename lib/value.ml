@@ -5,6 +5,8 @@ type lox_value =
   | LOX_NIL
   | LOX_CALLABLE of lox_callable
   | LOX_VOID (* Return type for callables that do not return anything *)
+  | LOX_CLASS of lox_callable
+  | LOX_INSTANCE of lox_value * (string, lox_value) Hashtbl.t
 
 and lox_callable = {
   name : string;
@@ -19,8 +21,10 @@ let stringify_type = function
   | LOX_NIL -> "nil"
   | LOX_CALLABLE _ -> "callable"
   | LOX_VOID -> "void"
+  | LOX_CLASS _ -> "class"
+  | LOX_INSTANCE _ -> "instance"
 
-let stringify_result = function
+let rec stringify_result = function
   | LOX_BOOL b -> string_of_bool b
   | LOX_STR s -> s
   | LOX_NUM n ->
@@ -31,6 +35,8 @@ let stringify_result = function
   | LOX_NIL -> "nil"
   | LOX_CALLABLE c -> "<fn " ^ c.name ^ ">"
   | LOX_VOID -> "void"
+  | LOX_CLASS c -> "<class " ^ c.name ^ ">"
+  | LOX_INSTANCE (cls, _) -> "<instance of " ^ stringify_result cls ^ ">"
 
 let is_truthy expr =
   match expr with
@@ -45,8 +51,9 @@ let is_equal left right =
   | LOX_BOOL l, LOX_BOOL r -> Bool.equal l r
   | LOX_NIL, LOX_NIL -> true
   | LOX_VOID, LOX_VOID -> true
-  (* TODO: Implement function equality if needed *)
+  (* TODO: Implement other equalities if needed *)
   (* | LOX_CALLABLE l, LOX_CALLABLE r -> l = r *)
+  (* | LOX_CLASS l, LOX_CLASS r -> l = r *)
   | _, _ -> false
 
 module Callable = struct

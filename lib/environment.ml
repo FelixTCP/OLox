@@ -5,7 +5,12 @@ let push_scope env = Hashtbl.create 16 :: env
 let define env name value =
   match env with
   | [] -> failwith "Empty environment"
-  | current :: _ -> Hashtbl.replace current name value
+  | current :: _ ->
+      print_endline
+        ("[env] Defining variable: " ^ name ^ " at depth "
+        ^ string_of_int (List.length env - 1)
+        ) ;
+      Hashtbl.replace current name value
 
 let get env depth name =
   let rec aux remaining_env =
@@ -13,11 +18,25 @@ let get env depth name =
     match remaining_env with
     | [] -> None
     | scope :: rest ->
+        print_endline ("[env] Checking scope at depth " ^ string_of_int current_depth) ;
+        Hashtbl.iter
+          (fun k v -> print_endline ("  " ^ k ^ ": " ^ Value.stringify_result v))
+          scope ;
         if current_depth = depth then
           Hashtbl.find_opt scope name
         else
           aux rest
   in
+  print_endline
+    ("[env] Getting variable: " ^ name ^ " at depth " ^ string_of_int depth) ;
+  List.iteri
+    (fun i e ->
+      print_endline ("Environment depth: " ^ string_of_int (List.length env - 1 - i)) ;
+      Hashtbl.iter
+        (fun k v -> print_endline ("  " ^ k ^ ": " ^ Value.stringify_result v))
+        e
+    )
+    env ;
   aux env
 
 let assign env name value =

@@ -1,6 +1,6 @@
 module Lexer = Olox.Lexer.Lexer
 module Token = Olox.Lexer.Token
-module Parser = Olox.Parser.Parser
+module Parser = Olox.Parser
 module AST = Olox.Ast
 module Interpreter = Olox.Interpreter.Interpreter
 module Value = Olox.Value

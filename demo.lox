@@ -1,10 +1,21 @@
-var a = "global";
-{
-  fun showA() {
-    print a;
+class Box {
+  var test = "tessst";
+  fun init (t) {
+    this.test = t;
   }
 
-  showA();
-  var a = "block";
-  showA();
+  fun method(argument) {
+    print "called function with " + argument;
+    this.test = argument;
+    print "this.test = " + this.test;
+  }
+
+  fun printTest () {
+    print "this.test = " + this.test;
+  }
 }
+
+var box = Box("huii");
+box.method("cool");
+var box2 = Box("hoii");
+box2.printTest();

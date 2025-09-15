@@ -6,7 +6,10 @@
    value  
    environment
    lexer
+   expression
    parser
+   statement
+   resolver
    ast
    interpreter
    options
