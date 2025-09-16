@@ -67,7 +67,6 @@ module Interpreter = struct
       (Value.lox_value, Error.t list) result =
     match expr with
     | Expression.LITERAL lit -> (
-        print_endline ("[interpreter] lit value " ^ Token.literal_to_string lit) ;
         match lit with
         | L_BOOL b -> Ok (LOX_BOOL b)
         | L_STRING s -> Ok (LOX_STR s)
@@ -81,15 +80,6 @@ module Interpreter = struct
         eval_expr env res l >>= fun l_value ->
         eval_expr env res r >>= fun r_value -> eval_binary_expr l_value op r_value
     | Expression.VARIABLE v -> (
-        List.iteri
-          (fun i e ->
-            print_endline
-              ("Environment depth: " ^ string_of_int (List.length env - 1 - i)) ;
-            Hashtbl.iter
-              (fun k v -> print_endline ("  " ^ k ^ ": " ^ Value.stringify_result v))
-              e
-          )
-          env ;
         let name = v.lexeme in
         let depth =
           match Hashtbl.find_opt res expr with
@@ -127,7 +117,6 @@ module Interpreter = struct
         eval_expr env res c >>= fun func ->
         match func with
         | Value.LOX_CLASS c | Value.LOX_CALLABLE c ->
-            print_endline "[interpreter] Evaluating function call" ;
             if c.arity <> List.length a then
               Error
                 [
@@ -141,16 +130,10 @@ module Interpreter = struct
                 match args with
                 | [] -> Ok []
                 | expr :: rest ->
-                    print_endline "[interpreter] Evaluating argument" ;
                     eval_expr env res expr >>= fun value ->
                     eval_args rest >>= fun values -> Ok (value :: values)
               in
-              eval_args a >>= fun arg_values ->
-              print_endline
-                ("[interpreter] Calling function " ^ c.name ^ " with arguments: "
-                ^ String.concat ", " (List.map Value.stringify_result arg_values)
-                ) ;
-              c.call (List.rev arg_values)
+              eval_args a >>= fun arg_values -> c.call (List.rev arg_values)
         | o ->
             Error
               [
@@ -183,10 +166,7 @@ module Interpreter = struct
         match obj with
         | Value.LOX_INSTANCE (_, fields) -> (
             match Hashtbl.find_opt fields name.lexeme with
-            | Some value ->
-                print_endline ("[interpreter] Accessing property " ^ name.lexeme) ;
-                print_endline ("[interpreter] Value: " ^ Value.stringify_result value) ;
-                Ok value
+            | Some value -> Ok value
             | None ->
                 let available_props =
                   Hashtbl.fold
@@ -241,10 +221,6 @@ module Interpreter = struct
       (control_flow, Error.t list) result =
     match stmt with
     | Statement.PRNT expr ->
-        print_endline
-          ("[interpreter] Print statement with expression: \n"
-          ^ Expression.expr_to_string expr
-          ) ;
         eval_expr env res expr >>= fun value ->
         print_endline (Value.stringify_result value) ;
         Ok NEXT
@@ -335,33 +311,6 @@ module Interpreter = struct
                         Environment.define method_env param.lexeme arg
                       )
                       m_params args ;
-                    print_endline
-                      ("[interpreter] Calling method " ^ m_name.lexeme
-                     ^ " with arguments: "
-                      ^ String.concat ", " (List.map Value.stringify_result args)
-                      ) ;
-                    print_endline
-                      ("[interpreter] 'this' is: "
-                      ^ Value.stringify_result
-                          (Environment.get method_env 0 "this"
-                          |> Option.value ~default:Value.LOX_VOID
-                          )
-                      ) ;
-                    print_endline "[interpreter] method_env:" ;
-                    List.iteri
-                      (fun i e ->
-                        print_endline
-                          ("Environment depth: "
-                          ^ string_of_int (List.length method_env - 1 - i)
-                          ) ;
-                        Hashtbl.iter
-                          (fun k v ->
-                            print_endline ("  " ^ k ^ ": " ^ Value.stringify_result v)
-                          )
-                          e
-                      )
-                      method_env ;
-                    print_endline "[interpreter] evaluating method body..." ;
                     eval method_env res (Statement.BLOCK m_body) >>= function
                     | NEXT -> Ok Value.LOX_VOID
                     | RETURN v -> Ok v
@@ -376,14 +325,11 @@ module Interpreter = struct
             (fun stmt ->
               match stmt with
               | Statement.FUN_DEF (m_name, m_params, m_body) ->
-                  print_endline ("[interpreter] Defining method " ^ m_name.lexeme) ;
                   let method_val = create_method m_name m_params m_body in
                   Hashtbl.add methods_and_fields m_name.lexeme method_val
               | Statement.VAR_DEF (var_name, None) ->
                   Hashtbl.add methods_and_fields var_name.lexeme Value.LOX_NIL
               | Statement.VAR_DEF (var_name, Some expr) -> (
-                  print_endline
-                    ("[interpreter] Defining variable field " ^ var_name.lexeme) ;
                   match eval_expr env res expr with
                   | Ok v -> Hashtbl.add methods_and_fields var_name.lexeme v
                   | Error _ -> failwith "Error evaluating field initializer"
@@ -403,12 +349,6 @@ module Interpreter = struct
               call =
                 (fun args ->
                   let instance_fields = Hashtbl.copy methods_and_fields in
-                  print_endline "[interpreter] instance fields: " ;
-                  Hashtbl.iter
-                    (fun k v ->
-                      print_endline ("  " ^ k ^ ": " ^ Value.stringify_result v)
-                    )
-                    instance_fields ;
                   let instance =
                     Value.LOX_INSTANCE (class_getter (), instance_fields)
                   in
