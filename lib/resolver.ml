@@ -191,10 +191,11 @@ and resolve_class resolver name methods : (unit, Error.t list) result =
             in
             resolve_function resolver method_name params body func_type
             >>! resolve_methods rest
-        | VAR_DEF (name, None) ->
-            resolve_var_declaration resolver name None >>! resolve_methods rest
-        | VAR_DEF (name, Some init) ->
-            resolve_var_declaration resolver name (Some init)
+        | VAR_DEF (_, init) ->
+            ( match init with
+            | Some expr -> resolve_expr resolver expr
+            | None -> Ok ()
+            )
             >>! resolve_methods rest
         | _ ->
             Error

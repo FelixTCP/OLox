@@ -6,13 +6,15 @@ type lox_value =
   | LOX_CALLABLE of lox_callable
   | LOX_VOID (* Return type for callables that do not return anything *)
   | LOX_CLASS of lox_callable
-  | LOX_INSTANCE of lox_value * (string, lox_value) Hashtbl.t
+  | LOX_INSTANCE of lox_value * (string, class_member) Hashtbl.t
 
 and lox_callable = {
   name : string;
   arity : int;
   call : lox_value list -> (lox_value, Error.t list) result;
 }
+
+and class_member = METHOD of lox_callable | FIELD of lox_value option
 
 let stringify_type = function
   | LOX_BOOL _ -> "bool"
@@ -36,7 +38,19 @@ let rec stringify_result = function
   | LOX_CALLABLE c -> "<fn " ^ c.name ^ ">"
   | LOX_VOID -> "void"
   | LOX_CLASS c -> "<class " ^ c.name ^ ">"
-  | LOX_INSTANCE (cls, _) -> "<instance of " ^ stringify_result cls ^ ">"
+  | LOX_INSTANCE (cls, m) ->
+      "<instance of " ^ stringify_result cls ^ ">" ^ " with members: \n"
+      ^ Hashtbl.fold
+          (fun k v acc ->
+            let member_str =
+              match v with
+              | METHOD _ -> "method"
+              | FIELD None -> "field (uninitialized)"
+              | FIELD (Some value) -> "field = " ^ stringify_result value
+            in
+            acc ^ "  " ^ k ^ ": " ^ member_str ^ "\n"
+          )
+          m ""
 
 let is_truthy expr =
   match expr with
@@ -45,6 +59,20 @@ let is_truthy expr =
   | _ -> true
 
 let is_equal left right =
+  let compare_instances () =
+    match left, right with
+    | LOX_INSTANCE (_, l_members), LOX_INSTANCE (_, r_members) -> (
+        Hashtbl.find l_members "<id>" |> function
+        | FIELD (Some (LOX_NUM l_id)) -> (
+            Hashtbl.find r_members "<id>" |> function
+            | FIELD (Some (LOX_NUM r_id)) -> l_id = r_id
+            | _ -> false
+          )
+        | _ -> false
+      )
+    | _, _ -> false
+  in
+
   match left, right with
   | LOX_NUM l, LOX_NUM r -> l = r
   | LOX_STR l, LOX_STR r -> String.equal l r
@@ -54,6 +82,7 @@ let is_equal left right =
   (* TODO: Implement other equalities if needed *)
   (* | LOX_CALLABLE l, LOX_CALLABLE r -> l = r *)
   (* | LOX_CLASS l, LOX_CLASS r -> l = r *)
+  | LOX_INSTANCE _, LOX_INSTANCE _ -> compare_instances ()
   | _, _ -> false
 
 module Callable = struct

@@ -15,7 +15,13 @@ class Box {
   }
 }
 
-var box = Box("huii");
-box.method("cool");
-var box2 = Box("hoii");
+var box = Box("box");
+var box2 = Box("box2");
+
+box.method("box is cool");
+
+print box.test;
+print box2.test;
+
+box.printTest();
 box2.printTest();
