@@ -11,6 +11,20 @@ type t =
   | SET of t * Lexer.Token.t * t
   | THIS of Lexer.Token.t
 
+let rec hd_token expr =
+  match expr with
+  | UNARY (op, _) -> op
+  | BINARY (l, _, _) -> hd_token l
+  | LOGICAL (l, _, _) -> hd_token l
+  | GROUPING e -> hd_token e
+  | VARIABLE name -> name
+  | ASSIGN (name, _) -> name
+  | CALL (callee, _) -> hd_token callee
+  | GET (object_expr, _) -> hd_token object_expr
+  | SET (object_expr, _, _) -> hd_token object_expr
+  | THIS keyword -> keyword
+  | LITERAL _ -> Lexer.Token.make_eof ()
+
 let rec to_string ?(indent = 0) expr =
   let fmt = Printf.sprintf in
   let indent_str = String.make (indent * 2) ' ' in

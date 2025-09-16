@@ -102,9 +102,10 @@ let rec eval_expr env res (expr : Expression.t) :
       match func with
       | Value.LOX_CLASS c | Value.LOX_CALLABLE c ->
           if c.arity <> List.length a then
-            err (Token.make_eof ())
-              (Printf.sprintf "Expected %d arguments but got %d" c.arity
-                 (List.length a)
+            let t = Expression.hd_token expr in
+            err t
+              (Printf.sprintf "In call `%s`: Expected %d arguments but got %d" c.name
+                 c.arity (List.length a)
               )
           else
             let rec eval_args args =
@@ -116,7 +117,7 @@ let rec eval_expr env res (expr : Expression.t) :
             in
             eval_args a >>= fun arg_values -> c.call (List.rev arg_values)
       | o ->
-          err (Token.make_eof ())
+          err (Expression.hd_token expr)
             (Printf.sprintf "Function calls not supported for `%s` of type %s"
                (Value.stringify_result o) (Value.stringify_type o)
             )

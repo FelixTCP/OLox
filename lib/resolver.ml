@@ -99,9 +99,9 @@ let rec resolve_stmt resolver = function
       >>! resolve_stmt resolver body
   | RETURN expr -> (
       match !(resolver.current_function) with
-      | NONE -> err (Lexer.Token.make_eof ()) "Cannot return from top-level code"
+      | NONE -> err (Expression.hd_token expr) "Cannot return from top-level code"
       | INITIALIZER ->
-          err (Lexer.Token.make_eof ()) "Cannot return from top-level code"
+          err (Expression.hd_token expr) "Cannot return from top-level code"
       | _ -> resolve_expr resolver expr
     )
 
@@ -187,7 +187,8 @@ and resolve_class resolver name methods : (unit, Error.t list) result =
             )
             >>! resolve_methods rest
         | _ ->
-            err (Lexer.Token.make_eof ())
+            err
+              (Statement.hd_token method_stmt)
               "Only field and method declarations allowed in class body"
       )
   in
