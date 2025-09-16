@@ -3,13 +3,13 @@ type class_type = NO_CLASS | CLASS | SUBCLASS
 
 type resolver_state = {
   scopes : (string, bool) Hashtbl.t Stack.t;
-  locals : (Expression.expr, int) Hashtbl.t;
+  locals : (Expression.t, int) Hashtbl.t;
   current_function : function_type ref;
   current_class : class_type ref;
 }
 
 (* Resolver Helper functions *)
-let parse_error (token : Lexer.Token.token) msg = Error.ParseError (token.line, msg)
+let err (token : Lexer.Token.t) msg = Error [ Error.ParseError (token.line, msg) ]
 
 let ( >>= ) result f =
   match result with
@@ -46,10 +46,10 @@ let define resolver name =
     let current_scope = Stack.top resolver.scopes in
     Hashtbl.replace current_scope name true
 
-let resolve_local resolver expr (name : string) (token : Lexer.Token.token) :
+let resolve_local resolver expr (name : string) (token : Lexer.Token.t) :
     (unit, Error.t list) result =
   if name = "this" && !(resolver.current_class) = NO_CLASS then
-    Error [ parse_error token "Cannot use 'this' outside of a class" ]
+    err token "Cannot use 'this' outside of a class"
   else (* scopes from innermost to outermost *)
     let scopes_list =
       Stack.fold (fun acc scope -> scope :: acc) [] resolver.scopes
@@ -99,20 +99,9 @@ let rec resolve_stmt resolver = function
       >>! resolve_stmt resolver body
   | RETURN expr -> (
       match !(resolver.current_function) with
-      | NONE ->
-          Error
-            [
-              parse_error
-                (Lexer.Token.make_eof_token ())
-                "Cannot return from top-level code";
-            ]
+      | NONE -> err (Lexer.Token.make_eof ()) "Cannot return from top-level code"
       | INITIALIZER ->
-          Error
-            [
-              parse_error
-                (Lexer.Token.make_eof_token ())
-                "Cannot return from top-level code";
-            ]
+          err (Lexer.Token.make_eof ()) "Cannot return from top-level code"
       | _ -> resolve_expr resolver expr
     )
 
@@ -198,12 +187,8 @@ and resolve_class resolver name methods : (unit, Error.t list) result =
             )
             >>! resolve_methods rest
         | _ ->
-            Error
-              [
-                parse_error
-                  (Lexer.Token.make_eof_token ())
-                  "Only field and method declarations allowed in class body";
-              ]
+            err (Lexer.Token.make_eof ())
+              "Only field and method declarations allowed in class body"
       )
   in
 
@@ -212,20 +197,17 @@ and resolve_class resolver name methods : (unit, Error.t list) result =
   resolver.current_class := enclosing_class ;
   result
 
-and resolve_expr resolver : Expression.expr -> (unit, Error.t list) result = function
+and resolve_expr resolver : Expression.t -> (unit, Error.t list) result = function
   | VARIABLE name ->
       ( if not (Stack.is_empty resolver.scopes) then
           let scope = Stack.top resolver.scopes in
           match Hashtbl.find_opt scope name.lexeme with
           | Some false ->
-              Error
-                [
-                  parse_error name
-                    (Printf.sprintf
-                       "Cannot read local variable `%s` in its own initializer"
-                       name.lexeme
-                    );
-                ]
+              err name
+                (Printf.sprintf
+                   "Cannot read local variable `%s` in its own initializer"
+                   name.lexeme
+                )
           | _ -> Ok ()
         else
           Ok ()
@@ -254,11 +236,11 @@ and resolve_expr resolver : Expression.expr -> (unit, Error.t list) result = fun
   | LITERAL _ -> Ok ()
   | THIS keyword ->
       if !(resolver.current_class) = NO_CLASS then
-        Error [ parse_error keyword "Cannot use 'this' outside of a class" ]
+        err keyword "Cannot use 'this' outside of a class"
       else
         resolve_local resolver (THIS keyword) keyword.lexeme keyword
 
-type resolution = (Expression.expr, int) Hashtbl.t
+type resolution = (Expression.t, int) Hashtbl.t
 
 let resolve statements : (resolution, Error.t list) result =
   let resolver = create () in
@@ -268,3 +250,28 @@ let resolve statements : (resolution, Error.t list) result =
     | stmt :: rest -> resolve_stmt resolver stmt >>= fun () -> resolve_all_stmts rest
   in
   resolve_all_stmts statements >>= fun () -> Ok resolver.locals
+
+let to_string res : string =
+  let entries = Hashtbl.fold (fun k v acc -> (k, v) :: acc) res [] in
+  let entry_strings =
+    List.map
+      (fun (expr, depth) ->
+        Printf.sprintf "Expr: %s at depth %d"
+          ( match expr with
+          | Expression.LITERAL _ -> "LITERAL"
+          | UNARY _ -> "UNARY"
+          | BINARY _ -> "BINARY"
+          | LOGICAL _ -> "LOGICAL"
+          | GROUPING _ -> "GROUPING"
+          | VARIABLE t -> Printf.sprintf "VARIABLE(%s)" t.lexeme
+          | ASSIGN (t, _) -> Printf.sprintf "ASSIGN(%s)" t.lexeme
+          | CALL _ -> "CALL"
+          | GET _ -> "GET"
+          | SET _ -> "SET"
+          | THIS t -> Printf.sprintf "THIS(%s)" t.lexeme
+          )
+          depth
+      )
+      entries
+  in
+  String.concat "\n" entry_strings

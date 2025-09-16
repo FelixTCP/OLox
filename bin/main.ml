@@ -12,7 +12,7 @@ module Version = Olox.Version
 let print_errors errors = List.iter Error.print_error errors
 let print_usage () = print_endline "Usage: olox [--debug] [--help] [filename]"
 
-let print_tokens (result : Token.token list) =
+let print_tokens (result : Token.t list) =
   result |> List.map Token.to_string |> List.iter print_endline
 
 let print_ast result = print_endline result

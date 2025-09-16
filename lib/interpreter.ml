@@ -5,17 +5,16 @@ let ( >>= ) result f =
   | Ok x -> f x
   | Error e -> Error e
 
-let runtime_error (token : Token.token) msg = Error.RuntimeError (token.line, msg)
+let err (token : Token.t) msg = Error [ Error.RuntimeError (token.line, msg) ]
 
-let eval_unary_expr (op : Token.token) value : (Value.lox_value, Error.t list) result
-    =
+let eval_unary_expr (op : Token.t) value : (Value.lox_value, Error.t list) result =
   match op.ttype, value with
   | MINUS, Value.LOX_NUM n -> Ok (LOX_NUM (-.n))
-  | MINUS, _ -> Error [ runtime_error op "Operand must be a number" ]
+  | MINUS, _ -> err op "Operand must be a number"
   | BANG, value -> Ok (LOX_BOOL (not (Value.is_truthy value)))
-  | _ -> Error [ runtime_error op "Unknown unary operator" ]
+  | _ -> err op "Unknown unary operator"
 
-let eval_binary_expr (left_val : Value.lox_value) (op : Token.token)
+let eval_binary_expr (left_val : Value.lox_value) (op : Token.t)
     (right_val : Value.lox_value) : (Value.lox_value, Error.t list) result =
   match left_val, op.ttype, right_val with
   | LOX_NUM l, PLUS, LOX_NUM r -> Ok (LOX_NUM (l +. r))
@@ -23,46 +22,41 @@ let eval_binary_expr (left_val : Value.lox_value) (op : Token.token)
   | LOX_NUM l, STAR, LOX_NUM r -> Ok (LOX_NUM (l *. r))
   | LOX_NUM l, SLASH, LOX_NUM r ->
       if r = 0.0 then
-        Error [ runtime_error op "Division by zero" ]
+        err op "Division by zero"
       else
         Ok (LOX_NUM (l /. r))
   | LOX_NUM _, (PLUS | MINUS | STAR | SLASH), _ ->
-      Error [ runtime_error op "Right operand must be a number" ]
-  | _, (MINUS | STAR | SLASH), _ ->
-      Error [ runtime_error op "Left operand must be a number" ]
+      err op "Right operand must be a number"
+  | _, (MINUS | STAR | SLASH), _ -> err op "Left operand must be a number"
   | LOX_STR l, PLUS, LOX_STR r -> Ok (LOX_STR (String.cat l r))
-  | LOX_STR _, PLUS, _ ->
-      Error [ runtime_error op "Right operand on concat must be a string" ]
+  | LOX_STR _, PLUS, _ -> err op "Right operand on concat must be a string"
   | l, PLUS, _ ->
-      Error
-        [
-          runtime_error op
-            (Printf.sprintf
-               "Left operand on '+' must be a Value of type number or string but \
-                was `%s` of type %s"
-               (Value.stringify_result l) (Value.stringify_type l)
-            );
-        ]
+      err op
+        (Printf.sprintf
+           "Left operand on '+' must be a Value of type number or string but was \
+            `%s` of type %s"
+           (Value.stringify_result l) (Value.stringify_type l)
+        )
   | LOX_NUM l, GREATER, LOX_NUM r -> Ok (LOX_BOOL (l > r))
   | LOX_NUM l, GREATER_EQUAL, LOX_NUM r -> Ok (LOX_BOOL (l >= r))
   | LOX_NUM l, LESS, LOX_NUM r -> Ok (LOX_BOOL (l < r))
   | LOX_NUM l, LESS_EQUAL, LOX_NUM r -> Ok (LOX_BOOL (l <= r))
   | LOX_NUM _, (GREATER | GREATER_EQUAL | LESS | LESS_EQUAL), _ ->
-      Error [ runtime_error op "Right operand on comparison must be a number" ]
+      err op "Right operand on comparison must be a number"
   | _, (GREATER | GREATER_EQUAL | LESS | LESS_EQUAL), _ ->
-      Error [ runtime_error op "Left operand on comparison must be a number" ]
+      err op "Left operand on comparison must be a number"
   | _, EQUAL_EQUAL, _ -> Ok (LOX_BOOL (Value.is_equal left_val right_val))
   | _, BANG_EQUAL, _ -> Ok (LOX_BOOL (not (Value.is_equal left_val right_val)))
-  | _ -> Error [ runtime_error op "Unknown binary operator" ]
+  | _ -> err op "Unknown binary operator"
 
-let eval_logical_expr (left_val : Value.lox_value) (op : Token.token)
+let eval_logical_expr (left_val : Value.lox_value) (op : Token.t)
     (right_val : Value.lox_value) : (Value.lox_value, Error.t list) result =
   match op.ttype with
   | AND -> Ok (if not (Value.is_truthy left_val) then left_val else right_val)
   | OR -> Ok (if Value.is_truthy left_val then left_val else right_val)
-  | _ -> Error [ runtime_error op "Unknowlogical operator" ]
+  | _ -> err op "Unknowlogical operator"
 
-let rec eval_expr env res (expr : Expression.expr) :
+let rec eval_expr env res (expr : Expression.t) :
     (Value.lox_value, Error.t list) result =
   match expr with
   | Expression.LITERAL lit -> (
@@ -89,24 +83,15 @@ let rec eval_expr env res (expr : Expression.expr) :
       in
       match Environment.get env depth name with
       | None ->
-          Error
-            [
-              runtime_error v
-                (Printf.sprintf "Could not find variable named %s at depth %d" name
-                   depth
-                );
-            ]
+          err v
+            (Printf.sprintf "Could not find variable named %s at depth %d" name depth)
       | Some value -> Ok value
     )
   | Expression.ASSIGN (v, e) -> (
       let name = v.lexeme in
       eval_expr env res e >>= fun value ->
       match Environment.assign env name value with
-      | None ->
-          Error
-            [
-              runtime_error v ("Could not assign to unknown variable named " ^ name);
-            ]
+      | None -> err v ("Could not assign to unknown variable named " ^ name)
       | Some value -> Ok value
     )
   | Expression.LOGICAL (l, op, r) ->
@@ -117,13 +102,10 @@ let rec eval_expr env res (expr : Expression.expr) :
       match func with
       | Value.LOX_CLASS c | Value.LOX_CALLABLE c ->
           if c.arity <> List.length a then
-            Error
-              [
-                runtime_error (Token.make_eof_token ())
-                  (Printf.sprintf "Expected %d arguments but got %d" c.arity
-                     (List.length a)
-                  );
-              ]
+            err (Token.make_eof ())
+              (Printf.sprintf "Expected %d arguments but got %d" c.arity
+                 (List.length a)
+              )
           else
             let rec eval_args args =
               match args with
@@ -134,14 +116,10 @@ let rec eval_expr env res (expr : Expression.expr) :
             in
             eval_args a >>= fun arg_values -> c.call (List.rev arg_values)
       | o ->
-          Error
-            [
-              Error.RuntimeError
-                ( 0,
-                  Printf.sprintf "Function calls not supported for `%s` of type %s"
-                    (Value.stringify_result o) (Value.stringify_type o)
-                );
-            ]
+          err (Token.make_eof ())
+            (Printf.sprintf "Function calls not supported for `%s` of type %s"
+               (Value.stringify_result o) (Value.stringify_type o)
+            )
     )
   | Expression.THIS keyword -> (
       let depth =
@@ -152,12 +130,7 @@ let rec eval_expr env res (expr : Expression.expr) :
         | Some d -> d
       in
       match Environment.get env depth "this" with
-      | None ->
-          Error
-            [
-              runtime_error keyword
-                (Printf.sprintf "Could not find 'this' at depth %d" depth);
-            ]
+      | None -> err keyword (Printf.sprintf "Could not find 'this' at depth %d" depth)
       | Some value -> Ok value
     )
   | Expression.GET (obj_expr, name) -> (
@@ -169,25 +142,17 @@ let rec eval_expr env res (expr : Expression.expr) :
               match value with
               | Value.METHOD m -> Ok (Value.LOX_CALLABLE m)
               | Value.FIELD (Some v) -> Ok v
-              | Value.FIELD None ->
-                  Error [ runtime_error name "Field is uninitialized" ]
+              | Value.FIELD None -> err name "Field is uninitialized"
             )
           | None ->
               (* TODO: propose other property based on levenshtein distance *)
-              Error
-                [
-                  runtime_error name
-                    (Printf.sprintf "Undefined property '%s'" name.lexeme);
-                ]
+              err name (Printf.sprintf "Undefined property '%s'" name.lexeme)
         )
       | _ ->
-          Error
-            [
-              runtime_error name
-                (Printf.sprintf "Only instances have properties, got `%s` of type %s"
-                   (Value.stringify_result obj) (Value.stringify_type obj)
-                );
-            ]
+          err name
+            (Printf.sprintf "Only instances have properties, got `%s` of type %s"
+               (Value.stringify_result obj) (Value.stringify_type obj)
+            )
     )
   | Expression.SET (obj, name, value) -> (
       eval_expr env res obj >>= fun obj_val ->
@@ -197,14 +162,11 @@ let rec eval_expr env res (expr : Expression.expr) :
           Hashtbl.replace fields name.lexeme (Value.FIELD (Some value_val)) ;
           Ok value_val
       | _ ->
-          Error
-            [
-              runtime_error name
-                (Printf.sprintf "Only instances have fields, got `%s` of type %s"
-                   (Value.stringify_result obj_val)
-                   (Value.stringify_type obj_val)
-                );
-            ]
+          err name
+            (Printf.sprintf "Only instances have fields, got `%s` of type %s"
+               (Value.stringify_result obj_val)
+               (Value.stringify_type obj_val)
+            )
     )
 
 type control_flow = RETURN of Value.lox_value | NEXT
@@ -277,7 +239,7 @@ let rec eval env (res : Resolver.resolution) stmt :
             (fun args ->
               let func_env = Environment.push_scope env in
               List.iter2
-                (fun (param : Token.token) arg ->
+                (fun (param : Token.t) arg ->
                   Environment.define func_env param.lexeme arg
                 )
                 params args ;
@@ -308,7 +270,10 @@ let rec eval env (res : Resolver.resolution) stmt :
               | Error _ -> Printf.eprintf "Failed to evaluate field initializer\n"
               | Ok result -> Hashtbl.add fields_defaults var_name.lexeme (Some result)
             )
-          | _ -> failwith "Only methods and fields are allowed in class body"
+          | _ ->
+              Printf.eprintf
+                "Only methods or fields are allowed in class body of %s\n"
+                name.lexeme
         )
         body ;
 
@@ -332,13 +297,13 @@ let rec eval env (res : Resolver.resolution) stmt :
                    ) ;
 
                 (* create empty fields that are bound as methods after the instace is
-                   created*)
+                   created *)
                 method_templates
                 |> Hashtbl.iter (fun method_name _ ->
                        Hashtbl.add instance_fields method_name (Value.FIELD None)
                    ) ;
 
-                (* Create a unique id for the instance *)
+                (* create a unique id for the instance *)
                 let id = Value.FIELD (Some (Value.LOX_NUM (Random.float 1.0))) in
                 Hashtbl.replace instance_fields "<id>" id ;
 
@@ -358,7 +323,7 @@ let rec eval env (res : Resolver.resolution) stmt :
                                Environment.define method_env "this" instance ;
 
                                List.iter2
-                                 (fun (param : Token.token) arg ->
+                                 (fun (param : Token.t) arg ->
                                    Environment.define method_env param.lexeme arg
                                  )
                                  m_params method_args ;
@@ -375,11 +340,12 @@ let rec eval env (res : Resolver.resolution) stmt :
                    ) ;
 
                 match Hashtbl.find_opt method_templates "init" with
+                | None -> Ok instance
                 | Some (init_params, init_body) -> (
                     let init_env = Environment.push_scope class_env in
                     Environment.define init_env "this" instance ;
                     List.iter2
-                      (fun (param : Token.token) arg ->
+                      (fun (param : Token.t) arg ->
                         Environment.define init_env param.lexeme arg
                       )
                       init_params args ;
@@ -387,7 +353,6 @@ let rec eval env (res : Resolver.resolution) stmt :
                     | NEXT -> Ok instance
                     | RETURN _ -> Ok instance
                   )
-                | None -> Ok instance
               );
           }
         in
@@ -405,7 +370,7 @@ and eval_block env res = function
   | [ stmt ] -> eval env res stmt
   | stmt :: rest -> eval env res stmt >>? fun () -> eval_block env res rest
 
-let interpret_ast (env : Environment.t) (ast : Ast.ast) :
+let interpret_ast (env : Environment.t) (ast : Ast.t) :
     (Value.lox_value, Error.t list) result =
   let rec execute_statements res = function
     | [] -> Ok Value.LOX_VOID
