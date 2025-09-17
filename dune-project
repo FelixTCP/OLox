@@ -4,7 +4,6 @@
 (version a0ddda4-dirty)
 
 (generate_opam_files true)
-(map_workspace_root false)
 
 (source
  (github FelixTCP/OLox))

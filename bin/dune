@@ -1,11 +1,12 @@
 (executable
  (public_name olox)
  (name main)
- (modes byte exe)
- (libraries olox))
+ (libraries olox)
+ (ocamlopt_flags (:standard -O3 -inline 1000)))
 
 (executable
  (public_name benchmark-olox)
  (name benchmark) 
  (modules benchmark)
- (libraries olox))
+ (libraries olox)
+ (ocamlopt_flags (:standard -O3 -inline 1000)))

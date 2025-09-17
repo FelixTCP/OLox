@@ -115,7 +115,7 @@ let rec eval_expr env res (expr : Expression.t) :
                   eval_expr env res expr >>= fun value ->
                   eval_args rest >>= fun values -> Ok (value :: values)
             in
-            eval_args a >>= fun arg_values -> c.call (List.rev arg_values)
+            eval_args a >>= fun arg_values -> c.call arg_values
       | o ->
           err (Expression.hd_token expr)
             (Printf.sprintf "Function calls not supported for `%s` of type %s"

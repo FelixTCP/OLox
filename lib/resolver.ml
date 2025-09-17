@@ -156,7 +156,13 @@ and resolve_function resolver name params body func_type :
         resolve_stmt resolver stmt >>= fun () -> resolve_body_stmts rest
   in
 
+  (* TODO: investivate wheter double scope is really necessary here *)
+  (* currently it is like this to reseble the two-stages of params and function body*)
+  (* that is because in the interpreter each BLOCK statement opens its own scope*)
+  (* thus a function body is in a nested scope related to the one wehere arguments are evaluated*)
+  begin_scope resolver ;
   let result = resolve_body_stmts body in
+  end_scope resolver ;
   end_scope resolver ;
   resolver.current_function := enclosing_function ;
   result
@@ -246,6 +252,8 @@ type resolution = (Expression.t, int) Hashtbl.t
 let resolve statements : (resolution, Error.t list) result =
   let resolver = create () in
   resolver.scopes |> Stack.push (Hashtbl.create 32) ;
+  Value.Callable.get_native_bindings ()
+  |> List.iter (fun (name, _) -> define resolver name) ;
   let rec resolve_all_stmts = function
     | [] -> Ok ()
     | stmt :: rest -> resolve_stmt resolver stmt >>= fun () -> resolve_all_stmts rest
