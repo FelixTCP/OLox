@@ -80,9 +80,34 @@ and class_declaration (tokens : Token.t list) =
         parse_body (func_stmt :: acc) rest
   in
   match tokens with
+  | ({ ttype = IDENTIFIER; _ } as id)
+    :: { ttype = LESS; _ }
+    :: ({ ttype = IDENTIFIER; _ } as s)
+    :: { ttype = LEFT_BRA; _ }
+    :: rest ->
+      parse_body [] rest >>= fun (body, rest') ->
+      let sup = Some (Expression.VARIABLE s) in
+      Ok (Statement.CLASS_DEC (id, sup, body), rest')
+  | ({ ttype = IDENTIFIER; _ } as id)
+    :: { ttype = LESS; _ }
+    :: ({ ttype = IDENTIFIER; _ } as sup)
+    :: other :: _ ->
+      err other
+        (Printf.sprintf
+           "Expected '{' to start a class body afer superclass `%s` in class \
+            declaration of `%s`"
+           sup.lexeme id.lexeme
+        )
+  | ({ ttype = IDENTIFIER; _ } as id) :: { ttype = LESS; _ } :: other :: _ ->
+      err other
+        (Printf.sprintf
+           "Expected superclass name after '<' in class declaration of `%s` but \
+            found `%s`"
+           id.lexeme other.lexeme
+        )
   | ({ ttype = IDENTIFIER; _ } as id) :: { ttype = LEFT_BRA; _ } :: rest ->
       parse_body [] rest >>= fun (body, rest') ->
-      Ok (Statement.CLASS_DEC (id, body), rest')
+      Ok (Statement.CLASS_DEC (id, None, body), rest')
   | { ttype = IDENTIFIER; _ } :: other :: _ ->
       err other
         "Expected '{' to start a class body afer identifier in class declaration"
@@ -348,6 +373,12 @@ and primary tokens : (Expression.t * Token.t list, Error.t list) result =
       expect_token Token.RIGHT_PAR rest' "Expect ')' after expression"
       >>= fun (_, rest'') -> Ok (Expression.GROUPING expr, rest'')
   | ({ ttype = THIS; _ } as t) :: rest -> Ok (VARIABLE t, rest)
+  | ({ ttype = SUPER; _ } as super) :: rest ->
+      expect_token DOT rest "Expected method name after '.' in 'super' expression"
+      >>= fun (_, rest') ->
+      expect_token IDENTIFIER rest'
+        "Expected method name after '.' in 'super' expression"
+      >>= fun (name, rest'') -> Ok (Expression.SUPER (super, name), rest'')
   | t :: rest ->
       let found =
         (* <= 1 because of EOF token at the end *)

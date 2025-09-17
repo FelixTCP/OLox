@@ -7,7 +7,7 @@ type t =
   | WHILE of Expression.t * t
   | FOR of t * Expression.t option * Expression.t option * t
   | FUN_DEF of Lexer.Token.t * Lexer.Token.t list * t list
-  | CLASS_DEC of Lexer.Token.t * t list
+  | CLASS_DEC of Lexer.Token.t * Expression.t option * t list
   | RETURN of Expression.t
 
 let rec hd_token stmt =
@@ -21,5 +21,5 @@ let rec hd_token stmt =
   | WHILE (_, body) -> hd_token body
   | FOR (init, _, _, _) -> hd_token init
   | FUN_DEF (name, _, _) -> name
-  | CLASS_DEC (name, _) -> name
+  | CLASS_DEC (name, _, _) -> name
   | RETURN expr -> Expression.hd_token expr

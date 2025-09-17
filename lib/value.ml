@@ -1,20 +1,4 @@
-type lox_value =
-  | LOX_BOOL of bool
-  | LOX_STR of string
-  | LOX_NUM of float
-  | LOX_NIL
-  | LOX_CALLABLE of lox_callable
-  | LOX_VOID (* Return type for callables that do not return anything *)
-  | LOX_CLASS of lox_callable
-  | LOX_INSTANCE of lox_value * (string, class_member) Hashtbl.t
-
-and lox_callable = {
-  name : string;
-  arity : int;
-  call : lox_value list -> (lox_value, Error.t list) result;
-}
-
-and class_member = METHOD of lox_callable | FIELD of lox_value option
+open Types
 
 let stringify_type = function
   | LOX_BOOL _ -> "bool"
@@ -26,7 +10,7 @@ let stringify_type = function
   | LOX_CLASS _ -> "class"
   | LOX_INSTANCE _ -> "instance"
 
-let rec stringify_result = function
+let stringify_result = function
   | LOX_BOOL b -> string_of_bool b
   | LOX_STR s -> s
   | LOX_NUM n ->
@@ -38,19 +22,7 @@ let rec stringify_result = function
   | LOX_CALLABLE c -> "<fn " ^ c.name ^ ">"
   | LOX_VOID -> "void"
   | LOX_CLASS c -> "<class " ^ c.name ^ ">"
-  | LOX_INSTANCE (cls, m) ->
-      "<instance of " ^ stringify_result cls ^ ">" ^ " with members: \n"
-      ^ Hashtbl.fold
-          (fun k v acc ->
-            let member_str =
-              match v with
-              | METHOD _ -> "method"
-              | FIELD None -> "field (uninitialized)"
-              | FIELD (Some value) -> "field = " ^ stringify_result value
-            in
-            acc ^ "  " ^ k ^ ": " ^ member_str ^ "\n"
-          )
-          m ""
+  | LOX_INSTANCE i -> "<instance of " ^ i.class_ref.name ^ ">"
 
 let is_truthy expr =
   match expr with
@@ -59,20 +31,6 @@ let is_truthy expr =
   | _ -> true
 
 let is_equal left right =
-  let compare_instances () =
-    match left, right with
-    | LOX_INSTANCE (_, l_members), LOX_INSTANCE (_, r_members) -> (
-        Hashtbl.find l_members "<id>" |> function
-        | FIELD (Some (LOX_NUM l_id)) -> (
-            Hashtbl.find r_members "<id>" |> function
-            | FIELD (Some (LOX_NUM r_id)) -> l_id = r_id
-            | _ -> false
-          )
-        | _ -> false
-      )
-    | _, _ -> false
-  in
-
   match left, right with
   | LOX_NUM l, LOX_NUM r -> l = r
   | LOX_STR l, LOX_STR r -> String.equal l r
@@ -82,16 +40,21 @@ let is_equal left right =
   (* TODO: Implement other equalities if needed *)
   (* | LOX_CALLABLE l, LOX_CALLABLE r -> l = r *)
   (* | LOX_CLASS l, LOX_CLASS r -> l = r *)
-  | LOX_INSTANCE _, LOX_INSTANCE _ -> compare_instances ()
+  | LOX_INSTANCE l, LOX_INSTANCE r -> l.id = r.id
   | _, _ -> false
 
 module Callable = struct
-  let clock_function =
-    { name = "clock"; arity = 0; call = (fun _ -> Ok (LOX_NUM (Sys.time ()))) }
+  let clock_function : lox_callable =
+    {
+      name = "clock";
+      arity = 0;
+      call = (fun _ _ -> Ok (LOX_NUM (Sys.time ())));
+      closure = [];
+      is_initializer = false;
+    }
 
-  let native_functions = [ clock_function ]
+  let native_functions : lox_callable list = [ clock_function ]
 
-  (* Return list of (name, value) pairs instead of calling Environment.define *)
-  let get_native_bindings () =
-    native_functions |> List.map (fun f -> f.name, LOX_CALLABLE f)
+  let get_native_bindings () : (string * lox_value) list =
+    native_functions |> List.map (fun (f : lox_callable) -> f.name, LOX_CALLABLE f)
 end

@@ -1,4 +1,11 @@
-class Box {
+class SuperBox {
+  fun cook () {
+    print "fry until no super anymore";
+  }
+}
+var Not = "im not a class";
+
+class Box < SuperBox {
   var test = "tessst";
   fun init (t) {
     this.test = t;
@@ -23,5 +30,13 @@ box.method("box is cool");
 print box.test;
 print box2.test;
 
+fun cook () {
+  print "fry until no time anymore";
+}
+box.cook = cook;
+
 box.printTest();
 box2.printTest();
+
+box.cook();
+box2.cook();

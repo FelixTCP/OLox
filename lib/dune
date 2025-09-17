@@ -3,6 +3,7 @@
  (name olox)
  (modules 
    error
+   types
    value  
    environment
    lexer
@@ -14,6 +15,6 @@
    interpreter
    options
    version
-   benchmark)
+   )
  (ocamlopt_flags 
    (:standard -O3 -unbox-closures -unbox-closures-factor 20 -inline 1000 -inline-max-unroll 10)))

@@ -78,16 +78,19 @@ let to_string ast : (string, Error.t list) result =
              | RETURN expr ->
                  let expr_str = Expression.to_string ~indent:(indent + 1) expr in
                  Printf.sprintf "%sReturn Statement:\n%s" indent_str expr_str
-             | CLASS_DEC (name, methods) ->
-                 (* let superclass_str = *)
-                 (*   match superclass with *)
-                 (*   | None -> "No superclass" *)
-                 (*   | Some s -> s.lexeme *)
-                 (* in *)
+             | CLASS_DEC (name, sup, methods) ->
+                 let superclass_str =
+                   match sup with
+                   | None -> ""
+                   | Some s -> (
+                       match s with
+                       | Expression.VARIABLE id -> Printf.sprintf "<%s>\n" id.lexeme
+                       | _ -> "ERROR: Superclass is not a variable\n"
+                     )
+                 in
                  let methods_str = aux (indent + 1) methods in
-                 Printf.sprintf "%sClass Declaration: %s\n%s" indent_str name.lexeme
-                   (* superclass_str *)
-                   methods_str
+                 Printf.sprintf "%sClass Declaration: %s %s\n%s" indent_str
+                   name.lexeme superclass_str methods_str
            in
            acc ^ stmt_str
          )

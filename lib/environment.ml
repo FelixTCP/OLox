@@ -1,5 +1,3 @@
-type t = (string, Value.lox_value) Hashtbl.t list
-
 let push_scope env = Hashtbl.create 16 :: env
 
 let define env name value =

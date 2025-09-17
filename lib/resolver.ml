@@ -48,6 +48,8 @@ let define resolver name =
 
 let resolve_local resolver expr (name : string) (token : Lexer.Token.t) :
     (unit, Error.t list) result =
+  (* TODO: investigate if this check is needed as a similiar one is done in
+     resolve_expr *)
   if name = "this" && !(resolver.current_class) = NO_CLASS then
     err token "Cannot use 'this' outside of a class"
   else (* scopes from innermost to outermost *)
@@ -73,7 +75,7 @@ let rec resolve_stmt resolver = function
   | VAR_DEF (name, init) -> resolve_var_declaration resolver name init
   | FUN_DEF (name, params, body) ->
       resolve_function resolver name params body FUNCTION
-  | CLASS_DEC (name, methods) -> resolve_class resolver name methods
+  | CLASS_DEC (name, sup, methods) -> resolve_class resolver name sup methods
   | EXPR expr -> resolve_expr resolver expr
   | PRNT expr -> resolve_expr resolver expr
   | IF (condition, then_branch, else_branch) -> (
@@ -167,15 +169,9 @@ and resolve_function resolver name params body func_type :
   resolver.current_function := enclosing_function ;
   result
 
-and resolve_class resolver name methods : (unit, Error.t list) result =
+and resolve_class resolver name sup methods : (unit, Error.t list) result =
   let enclosing_class = !(resolver.current_class) in
   resolver.current_class := CLASS ;
-
-  declare resolver name.Lexer.Token.lexeme ;
-  define resolver name.lexeme ;
-
-  begin_scope resolver ;
-
   let rec resolve_methods = function
     | [] -> Ok ()
     | method_stmt :: rest -> (
@@ -198,11 +194,31 @@ and resolve_class resolver name methods : (unit, Error.t list) result =
               "Only field and method declarations allowed in class body"
       )
   in
-
-  let result = resolve_methods methods in
-  end_scope resolver ;
-  resolver.current_class := enclosing_class ;
-  result
+  let aux () : (unit, Error.t list) result =
+    declare resolver name.Lexer.Token.lexeme ;
+    define resolver name.lexeme ;
+    begin_scope resolver ;
+    let result = resolve_methods methods in
+    end_scope resolver ;
+    resolver.current_class := enclosing_class ;
+    match result with
+    | Error e -> Error e
+    | Ok res -> Ok res
+  in
+  sup |> function
+  | Some (VARIABLE super_name) ->
+      if name.lexeme = super_name.lexeme then
+        err super_name "A class cannot inherit from itself"
+      else (
+        resolver.current_class := SUBCLASS ;
+        resolve_expr resolver (VARIABLE super_name) >>= fun () ->
+        () ;
+        aux ()
+      )
+  | Some o ->
+      err (Expression.hd_token o)
+        (Printf.sprintf "Superclass of `%s` must be a variable" name.lexeme)
+  | None -> aux ()
 
 and resolve_expr resolver : Expression.t -> (unit, Error.t list) result = function
   | VARIABLE name ->
@@ -246,6 +262,15 @@ and resolve_expr resolver : Expression.t -> (unit, Error.t list) result = functi
         err keyword "Cannot use 'this' outside of a class"
       else
         resolve_local resolver (THIS keyword) keyword.lexeme keyword
+  | SUPER (keyword, meth) ->
+      ( if !(resolver.current_class) = NO_CLASS then
+          err keyword "Cannot use 'super' outside of a class"
+        else if !(resolver.current_class) <> SUBCLASS then
+          err keyword "Cannot use 'super' in a class with no superclass"
+        else
+          Ok ()
+      )
+      >>! resolve_local resolver (SUPER (keyword, meth)) keyword.lexeme keyword
 
 type resolution = (Expression.t, int) Hashtbl.t
 
@@ -278,6 +303,7 @@ let to_string res : string =
           | GET _ -> "GET"
           | SET _ -> "SET"
           | THIS t -> Printf.sprintf "THIS(%s)" t.lexeme
+          | SUPER (s, m) -> Printf.sprintf "SUPER(%s)->(%s)" s.lexeme m.lexeme
           )
           depth
       )
